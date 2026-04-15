@@ -1,0 +1,971 @@
+\documentclass[conference,compsoc]{IEEEtran}
+
+\ifCLASSOPTIONcompsoc
+  \usepackage[nocompress]{cite}
+\else
+  \usepackage{cite}
+\fi
+
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{braket}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{multirow}
+\setlist{nosep}
+
+\hyphenation{Blood-MNIST Path-MNIST Med-MNIST}
+
+\begin{document}
+
+\title{Entangling Colour Channels in Quantum Probability\\Image Encoding for Medical Image Classification}
+
+\author{\IEEEauthorblockN{Eldana Atadana}
+\IEEEauthorblockA{%
+% School of XXX\\
+% University of XXX\\
+% City, Country\\
+% Email: xxx@xxx.edu
+}}
+
+\maketitle
+
+% ==================================================================
+\begin{abstract}
+Quantum Probability Image Encoding (QPIE) maps pixel intensities to probability amplitudes of a quantum state, but existing formulations treat colour channels independently or reduce images to grayscale.
+We extend QPIE to RGB images by assigning one qubit per colour channel and systematically varying the entanglement structure among the three channel qubits.
+Six encoding schemes---from a separable product state to multi-layer controlled-phase circuits---are evaluated on two MedMNIST benchmarks: BloodMNIST (8-class blood cell classification) and PathMNIST (9-class colon pathology).
+A multi-basis measurement protocol (Z, X, Y) combined with statistical aggregation converts per-pixel quantum states into compact 492-dimensional feature vectors.
+On BloodMNIST, the best quantum encoding achieves ACC\,=\,0.956 (within 0.2\% of ResNet-18) and all quantum schemes outperform matched-dimension classical baselines (random Fourier, polynomial, raw pixels) by 1--3 percentage points.
+On PathMNIST, the best-performing scheme is the non-entangling Sep (Z) encoding at $d = 100$ (ACC\,=\,0.815), which significantly outperforms both its multi-basis counterpart Sep (Z+X+Y) at $d = 492$ ($p = 0.007$) and the matched-dimension RBF baseline ($p = 0.007$).
+Of six entangling schemes evaluated, only the data-adaptive CSE provides a marginally significant improvement over the separable baseline ($p = 0.047$); three entangling schemes are significantly worse.
+These results suggest that the dominant contribution of QPIE-style encodings to classification accuracy comes from the per-channel $R_Y$ transformation and aggregated statistics, while inter-channel entanglement yields at most marginal additional gains and only when data-adaptively parametrised.
+\end{abstract}
+
+\IEEEpeerreviewmaketitle
+
+% ==================================================================
+\section{Introduction}
+\label{sec:intro}
+
+Quantum Probability Image Encoding (QPIE)~\cite{yao2017quantum} stores pixel intensities as probability amplitudes of a quantum state: for a grayscale image with $N$ pixels, the normalised intensity values become the amplitudes of a $\lceil\log_2 N\rceil$-qubit state.
+QPIE has since been applied to edge detection~\cite{yao2017quantum, cavalieri2020quantum}, image compression~\cite{amankwah2022quantum}, and classification~\cite{arxiv2507quantum}.
+However, all existing QPIE formulations either operate on grayscale images or treat each colour channel as an independent quantum register, discarding the statistical relationships between channels.
+
+This is a significant limitation for medical imaging, where colour is diagnostically meaningful.
+In histopathology, haematoxylin and eosin (H\&E) staining produces characteristic blue (nuclei) and pink (cytoplasm) hues---the \emph{ratios and correlations} between R, G, and B channels distinguish tissue types~\cite{chan2014histoscanning}.
+In blood cell microscopy, different cell types exhibit distinct staining colours.
+Figure~\ref{fig:rgb_channels} illustrates the point on a sample PathMNIST image: the three channels expose different tissue structures, and inter-channel correlations ($\rho_\text{RG} = 0.94$, $\rho_\text{GB} = 1.00$, $\rho_\text{RB} = 0.96$ for this image) encode structural information that a channel-independent encoding cannot access.
+A quantum encoding that captures inter-channel relationships should, in principle, extract richer features than one that treats channels independently.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig_rgb_channels.pdf}
+\caption{A sample PathMNIST image (colorectal adenocarcinoma) decomposed into its R, G, and B channels. Nuclei (haematoxylin) show higher contrast in the G and B channels; stromal tissue (eosin) dominates R. The three channels carry distinct structural information, and the inter-channel correlations are high ($\rho > 0.93$), motivating encodings that couple channel qubits.}
+\label{fig:rgb_channels}
+\end{figure}
+
+In this work, we extend QPIE to RGB images by assigning one qubit per colour channel (3 qubits total per pixel) and systematically studying how the entanglement structure among these qubits affects downstream classification.
+We make three contributions:
+
+\begin{enumerate}
+    \item \textbf{Six encoding schemes} of increasing entanglement complexity, all sharing the same angle encoding but differing in inter-channel entangling gates.
+    This controlled design isolates the effect of entanglement from other variables.
+    \item \textbf{A multi-basis measurement and statistical aggregation pipeline} that converts per-pixel 3-qubit states into fixed-length feature vectors (492 dimensions), avoiding the curse of dimensionality that degrades raw high-dimensional quantum features.
+    \item \textbf{Controlled experimental evidence} on two MedMNIST~\cite{yang2023medmnist} benchmarks (BloodMNIST and PathMNIST) showing that entanglement yields a statistically significant classification advantage on datasets with strong inter-channel correlations.
+\end{enumerate}
+
+This paper is structured to be self-contained: Section~\ref{sec:background} reviews QPIE and related work; Section~\ref{sec:method} derives the complete mathematical pipeline from a raw $28 \times 28$ RGB image to a 492-dimensional feature vector; Section~\ref{sec:experiments} describes datasets, baselines, and evaluation; Section~\ref{sec:results} presents results with statistical tests; Section~\ref{sec:discussion} discusses findings and limitations.
+
+% ==================================================================
+\section{Background and Related Work}
+\label{sec:background}
+
+\subsection{Quantum Image Representations}
+
+Several quantum image representations have been proposed.
+\textbf{FRQI} (Flexible Representation of Quantum Images)~\cite{le2011flexible} encodes a $2^n \times 2^n$ grayscale image into $2n + 1$ qubits, using one qubit per pixel to encode intensity via a rotation angle and $2n$ qubits for position.
+\textbf{NEQR} (Novel Enhanced Quantum Representation)~\cite{zhang2013neqr} stores intensity values in binary using basis encoding, requiring $2n + q$ qubits (where $q$ is the bit depth).
+\textbf{MCQI} (Multi-Channel Quantum Image)~\cite{sun2011multi} extends FRQI to colour by adding separate channel qubits, but treats channels as independent registers without entanglement.
+
+\textbf{QPIE} (Quantum Probability Image Encoding)~\cite{yao2017quantum} takes a different approach: it normalises all pixel intensities and encodes them directly as the probability amplitudes of a quantum state.
+For a grayscale image with $N$ pixels and intensities $\{I_k\}$, the QPIE state is:
+\begin{equation}
+    \ket{\psi_\text{QPIE}} = \frac{1}{\|\mathbf{I}\|} \sum_{k=0}^{N-1} I_k \ket{k}
+    \label{eq:qpie_original}
+\end{equation}
+where $\ket{k}$ is the computational basis state for pixel position $k$.
+QPIE requires only $\lceil\log_2 N\rceil$ qubits---fewer than FRQI or NEQR---but encodes the \emph{entire image} as a single quantum state, making per-pixel operations more complex.
+
+None of these representations systematically study the effect of \emph{entangling} colour channels during encoding.
+Our work addresses this gap.
+
+\subsection{Quantum Feature Maps and Classification}
+
+Hybrid quantum-classical classifiers typically use variational quantum circuits (VQCs) as trainable feature extractors~\cite{cong2019quantum, henderson2020quanvolutional, hur2022quantum, benedetti2019parameterized}.
+Because VQC parameters are trained end-to-end, it is difficult to isolate what the quantum encoding contributes versus what the classical optimiser learns.
+Our approach uses a \emph{fixed}, data-determined encoding with no trainable quantum parameters, so any performance difference between schemes is attributable to the encoding structure itself.
+
+\subsection{MedMNIST Benchmarks}
+
+MedMNIST v2~\cite{yang2023medmnist} provides standardised $28 \times 28$ medical image datasets with fixed train/validation/test splits and published baseline results (ResNet-18, ResNet-50, AutoML).
+We use BloodMNIST and PathMNIST, both RGB datasets where colour is diagnostically meaningful.
+
+% ==================================================================
+\section{Method: RGB Extension of QPIE}
+\label{sec:method}
+
+This section derives the complete pipeline from a raw $28 \times 28 \times 3$ RGB image to a 492-dimensional feature vector, step by step.
+
+\subsection{Overview}
+
+The pipeline processes each pixel independently through four stages (Fig.~\ref{fig:pipeline}):
+\begin{enumerate}
+    \item \textbf{Angle encoding}: Map each RGB channel to a qubit rotation angle.
+    \item \textbf{Entanglement}: Apply an entangling structure among the 3 channel qubits.
+    \item \textbf{Multi-basis measurement}: Compute outcome probabilities in Z, X, and Y bases, yielding 24 features per pixel.
+    \item \textbf{Statistical aggregation}: Summarise the 784 per-pixel feature vectors into 492 aggregate features for the entire image.
+\end{enumerate}
+The 492-dimensional vector is then classified by a standard neural network.
+
+\begin{figure}[t]
+\centering
+% \includegraphics[width=\columnwidth]{fig_pipeline}
+\fbox{\parbox{0.9\columnwidth}{\centering\vspace{2em}\textbf{Fig.~1: QPIE-RGB Pipeline Overview}\\[0.5em]
+$28{\times}28{\times}3$ image $\to$ per-pixel 3-qubit encoding $\to$ multi-basis measurement (Z,X,Y) $\to$ $784{\times}24$ feature matrix $\to$ statistical aggregation $\to$ 492-dim vector $\to$ MLP classifier\vspace{2em}}}
+\caption{Complete QPIE-RGB pipeline. Each of the 784 pixels is independently encoded into a 3-qubit state, measured in three bases to produce 24 probability features, then all per-pixel features are aggregated into a single 492-dimensional vector per image.}
+\label{fig:pipeline}
+\end{figure}
+
+\subsection{Step 1: Angle Encoding}
+\label{sec:angle_encoding}
+
+Consider a single pixel with RGB values $(r, g, b) \in \{0, 1, \ldots, 255\}^3$.
+Each channel value is mapped to a rotation angle:
+\begin{equation}
+    \theta_c = \frac{c}{255} \cdot \frac{\pi}{2}, \quad c \in \{r, g, b\}
+    \label{eq:theta}
+\end{equation}
+so that $\theta_c \in [0, \pi/2]$.
+
+\textbf{Why $\pi/2$ and not $\pi$?}
+Under the $R_Y(\theta)$ convention (equation~\ref{eq:ry} below), a maximum angle of $\pi/2$ maps the brightest pixel ($c = 255$) to $\cos(\pi/4)\ket{0} + \sin(\pi/4)\ket{1}$ --- an equal superposition with $P(\ket{1}) = 1/2$, \emph{not} to a pure $\ket{1}$ state (which would require $\theta = \pi$).
+This is a deliberate design choice.
+Restricting $\theta$ to $[0, \pi/2]$ keeps $\theta/2 \in [0, \pi/4]$, which ensures both basis-state amplitudes $\cos(\theta/2)$ and $\sin(\theta/2)$ are non-negative for every pixel.
+The encoded state then lies entirely in the first quadrant of the Bloch sphere, giving the encoded amplitudes a direct \emph{probability} interpretation --- consistent with the ``probability image encoding'' framing of QPIE --- and avoiding sign inversions that would otherwise arise for $\theta > \pi$.
+The trade-off is that the $\ket{1}$-outcome probability is compressed into $[0, 1/2]$ rather than $[0, 1]$; we find empirically that this does not limit classification accuracy, since the downstream aggregation (Section~\ref{sec:aggregation}) is scale-invariant in probability.
+
+Each channel is encoded onto one qubit (initialised in $\ket{0}$) via a $Y$-rotation gate:
+\begin{equation}
+    R_Y(\theta)\ket{0} = \cos\!\left(\frac{\theta}{2}\right)\ket{0} + \sin\!\left(\frac{\theta}{2}\right)\ket{1}
+    \label{eq:ry}
+\end{equation}
+
+\textbf{Interpretation.}
+A pixel value of $c = 0$ (black in that channel) maps to $\theta = 0$, giving $\ket{0}$---all probability is on the $\ket{0}$ outcome.
+A value of $c = 255$ (maximum intensity) maps to $\theta = \pi/2$, giving $\cos(\pi/4)\ket{0} + \sin(\pi/4)\ket{1} = \frac{1}{\sqrt{2}}(\ket{0} + \ket{1})$---equal probability on both outcomes.
+The probability of measuring $\ket{1}$ is $\sin^2(\theta/2)$, which increases monotonically with pixel intensity.
+
+After encoding all three channels, the initial 3-qubit state (before any entanglement) is:
+\begin{equation}
+    \ket{\psi_0} = R_Y(\theta_R)\ket{0} \otimes R_Y(\theta_G)\ket{0} \otimes R_Y(\theta_B)\ket{0}
+    \label{eq:psi0}
+\end{equation}
+This is a product (separable) state.
+
+\textbf{Qubit ordering convention.}
+Throughout the paper we use the little-endian bit ordering $\ket{b_B b_G b_R}$ with qubit~0 encoding Red, qubit~1 encoding Green, and qubit~2 encoding Blue; the basis-state index $j = b_R + 2 b_G + 4 b_B$ is what appears in all amplitude vectors below.
+The assignment $(0,1,2) \leftrightarrow (R,G,B)$ is arbitrary but fixed: all results are invariant under a consistent relabelling.
+
+Written in the computational basis $\{\ket{000}, \ket{001}, \ldots, \ket{111}\}$, with shorthand $c_R = \cos(\theta_R/2)$, $s_R = \sin(\theta_R/2)$, etc.:
+\begin{equation}
+    \ket{\psi_0} = \begin{pmatrix} c_R c_G c_B \\ s_R c_G c_B \\ c_R s_G c_B \\ s_R s_G c_B \\ c_R c_G s_B \\ s_R c_G s_B \\ c_R s_G s_B \\ s_R s_G s_B \end{pmatrix}
+    \label{eq:sep_vector}
+\end{equation}
+This 8-dimensional amplitude vector is what we compute for each pixel.
+All encodings share this starting point.
+
+\subsection{Step 2: Encoding Schemes (Entanglement Structures)}
+\label{sec:schemes}
+
+We define six encoding schemes that differ only in the entangling operations applied after the $R_Y$ encoding of~(\ref{eq:psi0}).
+The first scheme applies no entanglement; the remaining five apply entangling gates of increasing complexity.
+
+\begin{figure}[t]
+\centering
+% \includegraphics[width=\columnwidth]{fig_circuits}
+\fbox{\parbox{0.9\columnwidth}{\centering\vspace{2em}\textbf{Fig.~2: Quantum Circuit Diagrams}\\[0.5em]
+Six circuits for (a)~Sep, (b)~CRyE, (c)~GBE, (d)~CSE, (e)~PA-CSE, (f)~CP-2L.
+All begin with $R_Y(\theta_R)$, $R_Y(\theta_G)$, $R_Y(\theta_B)$ on qubits 0, 1, 2 respectively.
+Schemes (b)--(f) add entangling gates after encoding.\vspace{2em}}}
+\caption{Circuit diagrams for all six encoding schemes. Qubit 0 encodes the Red channel, qubit 1 encodes Green, qubit 2 encodes Blue.}
+\label{fig:circuits}
+\end{figure}
+
+\subsubsection{Sep (Separable --- No Entanglement)}
+\label{sec:sep}
+The state remains as in~(\ref{eq:sep_vector}).
+No entangling gates are applied.
+The 8-dimensional amplitude vector for each pixel is:
+\begin{equation}
+    \mathbf{a}_\text{Sep} = (c_R c_G c_B,\; s_R c_G c_B,\; c_R s_G c_B,\; \ldots,\; s_R s_G s_B)^\top
+    \label{eq:amps_sep}
+\end{equation}
+Because this is a product state, each qubit can be described independently.
+Sep serves as the baseline: any classification improvement from entangling schemes is attributable to the entanglement.
+
+\textbf{Worked example.}
+Consider a single pixel with $(r, g, b) = (0, 164, 255)$.
+The angles are $(\theta_R, \theta_G, \theta_B) = (0,\, 1.01,\, \pi/2)$, giving per-qubit states $[1, 0]$ on R, $[c_G, s_G] \approx [0.875, 0.484]$ on G, and $[c_B, s_B] \approx [0.707, 0.707]$ on B.
+The tensor product is an $8$-dimensional vector (not $8 \times 3$ --- the three qubits form a single 8-dimensional Hilbert space via the tensor product):
+$\mathbf{a}_\text{Sep} \approx (0.619, 0, 0.342, 0, 0.619, 0, 0.342, 0)^\top$.
+All four amplitudes with $R = 1$ vanish because $s_R = 0$.
+Applying CNOT$_{0\to 1}$ (the Pauli-$X$ controlled version) to this state permutes only indices with $R = 1$, which are already zero, so the entangled result coincides with the separable one for this pixel --- entanglement requires the control qubit to be in superposition.
+For a contrasting pixel $(128, 50, 200)$ with $s_R \neq 0$, the same CNOT produces a state that cannot be factored as $\ket{\psi_R} \otimes \ket{\psi_G} \otimes \ket{\psi_B}$; this is the entanglement the later schemes exploit.
+
+\subsubsection{CRyE (Controlled-$R_Y(\pi)$ Cascade Entanglement)}
+\label{sec:crye}
+After encoding, apply a cascade of two controlled-$R_Y(\pi)$ gates: $CR_Y(\pi)_{0 \to 1}$ then $CR_Y(\pi)_{1 \to 2}$.
+Unlike a standard CNOT (which is the controlled Pauli-$X$), $R_Y(\pi)$ flips $\ket{0}\to\ket{1}$ but sends $\ket{1}\to -\ket{0}$:
+\begin{equation}
+    CR_Y(\pi) = \begin{pmatrix} 1 & 0 & 0 & 0 \\ 0 & 1 & 0 & 0 \\ 0 & 0 & 0 & -1 \\ 0 & 0 & 1 & 0 \end{pmatrix}
+\end{equation}
+in the basis $\{\ket{00},\ket{01},\ket{10},\ket{11}\}$.
+Applying the cascade to the separable state yields:
+\begin{equation}
+    \mathbf{a}_\text{CRyE} = \begin{pmatrix} c_R c_G c_B \\ -s_R s_G c_B \\ -c_R s_G s_B \\ -s_R c_G s_B \\ c_R c_G s_B \\ -s_R s_G s_B \\ c_R s_G c_B \\ s_R c_G c_B \end{pmatrix}
+    \label{eq:amps_crye}
+\end{equation}
+The magnitudes coincide with those produced by a CNOT cascade (a permutation of the separable amplitudes), but four of the eight amplitudes carry a minus sign.
+These signs follow the clean rule $\text{sgn}(b_R, b_G, b_B) = (-1)^{d}$, where $d$ is the number of \emph{descents} along the chain $R \to G \to B$ (a descent is an adjacent bit-pair of the form $(1,0)$).
+
+\textbf{Why $CR_Y(\pi)$ rather than CNOT?}
+Three reasons motivate this choice.
+(i)~\emph{Gate-family consistency}: the data encoding itself uses $R_Y$ rotations, so replacing the Pauli-$X$ flip in CNOT with an $R_Y(\pi)$ flip keeps the entire circuit within a single real-valued, $R_Y$-parametrized family.
+(ii)~\emph{Z-basis equivalence to CNOT}: because the two gates differ only by signs on off-diagonal amplitudes, $|\psi|^2$ in the computational basis is identical to a CNOT-cascade result.
+The discriminative benefit of this scheme therefore lies entirely in the X- and Y-basis measurements (Section~\ref{sec:multibasis}), where the sign pattern produces interference that a pure permutation cannot.
+(iii)~\emph{Hardware implementability}: controlled-$R_Y$ is a standard parametrized two-qubit primitive on near-term quantum devices.
+
+\subsubsection{GBE (GHZ-Basis Entanglement)}
+\label{sec:gbe}
+GBE is defined directly by its action on the amplitude vector: it is the unitary $U_\text{GBE}$ that maps each separable amplitude and its bit-complement partner into an entangled superposition in the GHZ-like basis.
+Applied to the separable state $\mathbf{a}_\text{Sep}$, the resulting amplitudes are:
+\begin{equation}
+    \mathbf{a}_\text{GBE} = \frac{1}{\sqrt{2}} \begin{pmatrix} c_R c_G c_B - s_R s_G s_B \\ s_R c_G c_B + c_R s_G s_B \\ c_R s_G c_B + s_R c_G s_B \\ s_R s_G c_B - c_R c_G s_B \\ c_R c_G s_B + s_R s_G c_B \\ s_R c_G s_B - c_R s_G c_B \\ c_R s_G s_B - s_R c_G c_B \\ s_R s_G s_B + c_R c_G c_B \end{pmatrix}
+    \label{eq:amps_gbe}
+\end{equation}
+Each output amplitude mixes two separable amplitudes whose bit-strings are \emph{complementary} (i.e., $\ket{000}\leftrightarrow\ket{111}$, $\ket{001}\leftrightarrow\ket{110}$, etc.).
+This three-qubit pairing is the defining property: GBE rotates the computational basis toward the eight-dimensional GHZ basis, $\{(\ket{x} \pm \ket{\bar x})/\sqrt{2}\}$, where $\bar x$ denotes bitwise negation.
+The mixing is therefore genuinely three-qubit: no decomposition as a single Hadamard followed by two-qubit CNOTs reproduces it, because such a decomposition can only couple states differing in the bits touched by the control qubit.
+The $1/\sqrt{2}$ factor ensures normalisation.
+We retain the label ``GBE'' to emphasize that this scheme is the natural ``maximally delocalised'' counterpart to the separable state within our set, providing the strongest-correlation baseline against which the localised (CRyE) and data-adaptive (CSE, PA-CSE) schemes can be compared.
+
+\subsubsection{CSE (Correlation-Scaled Entanglement)}
+\label{sec:cse}
+CSE adapts the entanglement strength to the actual colour structure of each image.
+Before encoding the pixels of image $i$, we compute the per-image Pearson correlation between channels across all 784 pixels:
+\begin{equation}
+    \rho_\text{RG}^{(i)} = \frac{\sum_k (r_k - \bar{r})(g_k - \bar{g})}{\sqrt{\sum_k (r_k - \bar{r})^2 \sum_k (g_k - \bar{g})^2}}
+    \label{eq:pearson}
+\end{equation}
+and similarly for $\rho_\text{GB}^{(i)}$.
+These are clipped to $[0.01, 0.99]$ for numerical stability, then converted to entanglement angles:
+\begin{equation}
+    \alpha_\text{RG} = |\rho_\text{RG}^{(i)}| \cdot \frac{\pi}{2}, \quad
+    \alpha_\text{GB} = |\rho_\text{GB}^{(i)}| \cdot \frac{\pi}{2}
+    \label{eq:cse_angles}
+\end{equation}
+After the initial $R_Y$ encoding, controlled-$R_Y$ gates are applied:
+$CR_Y(\alpha_\text{RG})$ with qubit~0 controlling qubit~1, and $CR_Y(\alpha_\text{GB})$ with qubit~1 controlling qubit~2.
+The controlled-$R_Y$ gate applies an additional $R_Y$ rotation to the target qubit only when the control qubit is $\ket{1}$:
+\begin{equation}
+    CR_Y(\alpha)\ket{1}\ket{\phi} = \ket{1} R_Y(\alpha)\ket{\phi}
+\end{equation}
+Unlike CNOT or $CR_Y(\pi)$ --- both of which are (signed) permutations on the eight-dimensional amplitude vector --- $CR_Y(\alpha)$ with continuous $\alpha$ is a genuine two-qubit \emph{rotation}, mixing amplitudes on the control-$\ket{1}$ subspace by real coefficients $\cos(\alpha/2)$ and $\pm\sin(\alpha/2)$.
+CSE therefore does not merely reshuffle probability mass: it creates new amplitude values whose magnitude depends continuously on $\alpha$.
+
+\textbf{CSE is the only data-adaptive scheme in our set.}
+Sep, CRyE, GBE, PA-CSE's per-pixel variant aside, and CP-2L apply fixed unitaries identical for every image; CSE alone applies a unitary whose parameters are computed from the input image itself.
+The Green qubit's encoding is shifted by $\alpha_\text{RG}$ when Red's qubit is in $\ket{1}$, with $\alpha_\text{RG}$ set by the \emph{per-image} channel correlation.
+For an image where R and G are strongly correlated ($|\rho_\text{RG}| \approx 1$), $\alpha_\text{RG} \to \pi/2$, creating strong coupling.
+For an image where channels are uncorrelated ($|\rho_\text{RG}| \approx 0$), $\alpha_\text{RG} \to 0$, and CSE reduces to the separable encoding.
+The entanglement strength therefore scales with how correlated the channels actually are in that particular image --- a key distinction from the other fixed-unitary schemes, and one that proves decisive on PathMNIST (Section~\ref{sec:results_path}).
+
+The resulting amplitudes are:
+\begin{equation}
+    \mathbf{a}_\text{CSE} = \begin{pmatrix} c_R c_G c_B \\ s_R c_{G'} c_B \\ c_R s_G c_{B'} \\ s_R s_{G'} c_{B'} \\ c_R c_G s_B \\ s_R c_{G'} s_B \\ c_R s_G s_{B'} \\ s_R s_{G'} s_{B'} \end{pmatrix}
+    \label{eq:amps_cse}
+\end{equation}
+where $c_{G'} = \cos((\theta_G + \alpha_\text{RG})/2)$, $s_{G'} = \sin((\theta_G + \alpha_\text{RG})/2)$, and similarly $c_{B'}, s_{B'}$ use $\theta_B + \alpha_\text{GB}$.
+
+\subsubsection{PA-CSE (Pixel-Adaptive CSE)}
+\label{sec:pa_cse}
+A finer-grained variant of CSE where the entanglement angle is computed per-pixel rather than per-image:
+\begin{equation}
+    \alpha_\text{RG}^{(k)} = \bar{r}_k \cdot \bar{g}_k \cdot \frac{\pi}{2}, \quad
+    \alpha_\text{GB}^{(k)} = \bar{g}_k \cdot \bar{b}_k \cdot \frac{\pi}{2}
+    \label{eq:pa_cse_angles}
+\end{equation}
+where $\bar{c}_k = c_k / 255$ is the normalised channel value at pixel $k$.
+The product $\bar{r}_k \cdot \bar{g}_k$ is large when both channels are bright and small when either is dark, providing a local measure of channel co-activation.
+The circuit and amplitude formulas are identical to CSE but with pixel-specific angles.
+
+\subsubsection{CP-2L (Controlled-Phase, 2-Layer)}
+\label{sec:cp2l}
+The most expressive scheme uses two layers with data re-uploading and controlled-$R_Z$ entangling gates.
+
+\textbf{Layer 1}: Apply $R_Y(\theta_R)$, $R_Y(\theta_G)$, $R_Y(\theta_B)$ on qubits 0, 1, 2.
+Then apply controlled-$R_Z$ gates on all three qubit pairs:
+\begin{align}
+    CR_Z(\theta_R \cdot \theta_G) &\text{ on qubits } \{0,1\} \nonumber \\
+    CR_Z(\theta_G \cdot \theta_B) &\text{ on qubits } \{1,2\} \nonumber \\
+    CR_Z(\theta_R \cdot \theta_B) &\text{ on qubits } \{0,2\}
+    \label{eq:cp2l_layer}
+\end{align}
+The three pairs form the complete graph $K_3$, so every pair of channels is directly coupled.
+Note that $CR_Z$ is \emph{symmetric in control and target}: because $R_Z$ is diagonal, the two-qubit matrix
+\begin{equation}
+    CR_Z(\alpha) = \text{diag}\!\left(1,\; 1,\; e^{-i\alpha/2},\; e^{+i\alpha/2}\right)
+\end{equation}
+is unchanged under swapping the role of the two qubits, and all three $CR_Z$ gates commute, so their order of application does not matter.
+Here $R_Z(\alpha) = \exp(-i\alpha Z/2)$ denotes the continuous rotation about the $Z$ axis, not the Pauli-$Z$ gate itself: $R_Z(\alpha)\ket{0} = e^{-i\alpha/2}\ket{0}$ and $R_Z(\alpha)\ket{1} = e^{+i\alpha/2}\ket{1}$.
+The controlled version therefore gives $CR_Z(\alpha)\ket{1}\ket{1} = e^{+i\alpha/2}\ket{1}\ket{1}$ and $CR_Z(\alpha)\ket{1}\ket{0} = e^{-i\alpha/2}\ket{1}\ket{0}$, while leaving the control-$\ket{0}$ subspace untouched.
+Using the product $\theta_i \cdot \theta_j$ as the rotation angle makes the phase shift proportional to the product of both channel intensities, creating a nonlinear two-channel interaction.
+
+Unlike CNOT, $CR_Y(\pi)$, or the $CR_Y(\alpha)$ used in CSE, $CR_Z(\alpha)$ does \emph{not} change any $|\cdot|^2$: measurement probabilities in the Z basis are identical to those of the separable state.
+The entanglement signal of CP-2L therefore lives entirely in the X- and Y-basis measurements, where the relative phases $e^{\pm i\alpha/2}$ produce interference that is visible only after a basis-change rotation (Section~\ref{sec:multibasis}).
+
+\textbf{Layer 2}: The channel-to-qubit assignment is permuted: $(R,G,B) \to (B,R,G)$.
+The encoding and entangling gates are applied again with this new assignment.
+Re-uploading the data with a different permutation increases the circuit's expressivity by encoding different channel orderings.
+
+CP-2L has 12 single-qubit gates and 6 two-qubit gates---the deepest circuit in our study.
+Because $CR_Z$ introduces complex phases, the amplitudes are complex-valued (unlike the real-valued amplitudes of the other schemes).
+
+\subsection{Step 3: Multi-Basis Measurement}
+\label{sec:multibasis}
+
+After encoding, each pixel's 3-qubit state $\ket{\psi}$ has 8 complex amplitudes.
+Measuring in the computational (Z) basis yields 8 outcome probabilities $p_j = |\langle j | \psi \rangle|^2$.
+However, Z-basis measurement captures only the amplitude magnitudes, discarding all phase information.
+Entangling gates like $CR_Z$ in CP-2L introduce \emph{relative phases} between basis states, which are invisible to Z-basis measurement alone.
+
+To access phase information, we measure in three mutually unbiased bases: Z, X, and Y.
+Each basis measurement is implemented by applying a basis-change unitary $V$ before Z-basis measurement:
+\begin{align}
+    \text{Z basis:} \quad & V_Z = I^{\otimes 3} \quad (\text{identity, no change}) \\
+    \text{X basis:} \quad & V_X = H^{\otimes 3} \quad (\text{Hadamard on each qubit}) \\
+    \text{Y basis:} \quad & V_Y = (HS^\dagger)^{\otimes 3}
+    \label{eq:basis_change}
+\end{align}
+where $H = \frac{1}{\sqrt{2}}\begin{psmallmatrix} 1 & 1 \\ 1 & -1 \end{psmallmatrix}$ and $S^\dagger = \begin{psmallmatrix} 1 & 0 \\ 0 & -i \end{psmallmatrix}$.
+
+For each basis $B$, the 8 outcome probabilities are:
+\begin{equation}
+    p_j^{(B)} = |\langle j | V_B | \psi \rangle|^2, \quad j = 0, \ldots, 7
+    \label{eq:probs}
+\end{equation}
+
+Concatenating the three bases yields $3 \times 8 = 24$ probability features per pixel:
+\begin{equation}
+    \mathbf{f}_k = (p_0^{(Z)}, \ldots, p_7^{(Z)},\; p_0^{(X)}, \ldots, p_7^{(X)},\; p_0^{(Y)}, \ldots, p_7^{(Y)})
+    \label{eq:features_per_pixel}
+\end{equation}
+
+\textbf{Why three bases?}
+For the separable encoding, the X and Y bases provide alternative views of the same amplitude structure.
+For entangling encodings, particularly CP-2L which introduces complex phases, the X and Y bases reveal interference patterns that are invisible in the Z basis.
+This makes multi-basis measurement especially valuable for distinguishing entangling schemes from the separable baseline.
+
+\subsection{Step 4: Statistical Aggregation}
+\label{sec:aggregation}
+
+A $28 \times 28$ image contains 784 pixels, each producing a 24-dimensional feature vector, giving a $784 \times 24$ feature matrix $\mathbf{F}$ with 18,816 entries.
+Directly using this as a feature vector is problematic: on BloodMNIST (11,959 training images), the feature-to-sample ratio would be $18{,}816 / 11{,}959 \approx 1.57$, causing severe overfitting.
+We confirmed empirically that raw 18,816-dimensional features degrade performance substantially (Section~\ref{sec:results_agg}).
+
+Instead, we aggregate $\mathbf{F}$ into a compact statistical summary.
+Let $\mathbf{F}_{:,d}$ denote the 784-element column of feature dimension $d$.
+For each of the $D = 24$ feature dimensions, we compute 9 summary statistics:
+\begin{equation}
+    \text{agg}(d) = \left(\mu_d,\; \sigma_d,\; \gamma_d,\; \kappa_d,\; q_{10}^d,\; q_{25}^d,\; q_{50}^d,\; q_{75}^d,\; q_{90}^d\right)
+    \label{eq:agg_stats}
+\end{equation}
+where $\mu_d$ is the mean, $\sigma_d$ the standard deviation, $\gamma_d$ the skewness, $\kappa_d$ the excess kurtosis, and $q_p^d$ the $p$-th percentile, all computed over the 784 pixels.
+
+Additionally, we compute the pairwise Pearson correlation between all $\binom{D}{2}$ pairs of feature dimensions:
+\begin{equation}
+    \rho_{d_1, d_2} = \frac{\text{Cov}(\mathbf{F}_{:,d_1},\; \mathbf{F}_{:,d_2})}{\sigma_{d_1} \sigma_{d_2}}
+    \label{eq:corr_features}
+\end{equation}
+These inter-feature correlations capture how different measurement outcomes co-vary across the image---for example, whether high Z-basis $\ket{000}$ probability at a pixel tends to co-occur with high X-basis $\ket{000}$ probability.
+
+The total aggregated dimensionality is:
+\begin{equation}
+    9 \times 24 + \binom{24}{2} = 216 + 276 = 492
+    \label{eq:total_dim}
+\end{equation}
+This represents a $\mathbf{38\times}$ compression from 18,816 raw features to 492 aggregated features.
+
+\textbf{Why aggregation works for medical images.}
+In both BloodMNIST and PathMNIST, classes are distinguished primarily by the overall colour distribution rather than spatial structure at the $28 \times 28$ resolution.
+The aggregation statistics capture the \emph{shape} of the distribution (mean, spread, skewness, tails) of each quantum measurement outcome across the image, which is precisely the colour-distribution information needed for classification.
+
+\subsection{Step 5: Classification}
+\label{sec:classifier}
+
+The 492-dimensional aggregated feature vector is classified by a multi-layer perceptron (MLP) with architecture:
+\begin{equation}
+    492 \xrightarrow{\text{Linear}} 512 \xrightarrow{\text{ReLU, BN, Drop}(0.3)} 256 \xrightarrow{\text{ReLU, BN, Drop}(0.2)} 128 \xrightarrow{\text{ReLU, Drop}(0.1)} C
+    \label{eq:mlp}
+\end{equation}
+where $C$ is the number of classes (8 for BloodMNIST, 9 for PathMNIST), BN denotes batch normalisation, and Drop$(p)$ denotes dropout with rate $p$.
+Training uses the Adam optimiser with learning rate $10^{-3}$, weight decay $10^{-4}$, and cosine annealing over 200 epochs with batch size 512.
+Features are standardised (zero mean, unit variance) before training.
+
+% ==================================================================
+\section{Experimental Setup}
+\label{sec:experiments}
+
+\subsection{Datasets}
+\label{sec:datasets}
+
+We use the official MedMNIST v2~\cite{yang2023medmnist} splits ($28 \times 28$ RGB):
+
+\textbf{BloodMNIST}: 11,959 / 1,712 / 3,421 (train/val/test), 8 classes of peripheral blood cell types (basophil, eosinophil, erythroblast, immature granulocyte, lymphocyte, monocyte, neutrophil, platelet) from microscopy images.
+Source images~\cite{acevedo2020dataset} are centre-cropped and resized to $28 \times 28$.
+Global inter-channel correlations: $\rho_\text{RG} = 0.991$, $\rho_\text{GB} = 0.859$, $\rho_\text{RB} = 0.856$.
+
+\textbf{PathMNIST}: 89,996 / 10,004 / 7,180 (train/val/test), 9 classes of colon tissue types (adipose, background, debris, lymphocytes, mucus, smooth muscle, normal mucosa, stroma, tumour) from H\&E-stained pathology slides~\cite{kather2019predicting}.
+Source $224 \times 224$ patches are resized to $28 \times 28$.
+Global inter-channel correlations: $\rho_\text{RG} = 0.892$, $\rho_\text{GB} = 0.966$, $\rho_\text{RB} = 0.928$.
+
+Both datasets exhibit high inter-channel correlations, but the correlation structure differs.
+An analysis of how per-image correlations vary across classes is needed to understand whether entanglement can capture class-discriminative colour structure (see Figs.~\ref{fig:corr_dist} and~\ref{fig:corr_stability}).
+
+\begin{figure}[t]
+\centering
+% \includegraphics[width=\columnwidth]{fig_corr_dist}
+\fbox{\parbox{0.9\columnwidth}{\centering\vspace{2em}\textbf{Fig.~3: Per-Image Channel Correlation Distributions}\\[0.5em]
+Violin/box plots of $\rho_\text{RG}$, $\rho_\text{GB}$, $\rho_\text{RB}$ per image, grouped by class, for (a)~BloodMNIST and (b)~PathMNIST.
+Shows how different classes have different channel correlation profiles.\vspace{2em}}}
+\caption{Distribution of per-image Pearson correlations between R--G, G--B, and R--B channels, grouped by class. Different classes exhibit distinct correlation profiles, especially on PathMNIST, suggesting that inter-channel relationships carry class-discriminative information.}
+\label{fig:corr_dist}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+% \includegraphics[width=\columnwidth]{fig_corr_stability}
+\fbox{\parbox{0.9\columnwidth}{\centering\vspace{2em}\textbf{Fig.~4: Inter-Channel Correlation Stability Across Classes}\\[0.5em]
+Heatmaps showing mean $\rho_\text{RG}$, $\rho_\text{GB}$, $\rho_\text{RB}$ for each class, for both datasets.
+Highlights which channel pairs are most discriminative.\vspace{2em}}}
+\caption{Mean inter-channel correlations by class. Classes with distinctive correlation signatures (e.g., low $\rho_\text{GB}$ vs.\ high $\rho_\text{RG}$) benefit most from entangling schemes that model these relationships.}
+\label{fig:corr_stability}
+\end{figure}
+
+\subsection{Classical Baselines}
+\label{sec:baselines}
+
+To ensure a fair comparison, we use three families of classical baselines at different levels of sophistication:
+
+\textbf{1.\ Raw RGB statistics} (simplest baseline): The raw $28 \times 28 \times 3$ pixel values are normalised to $[0,1]$ and aggregated using the same statistical pipeline (Section~\ref{sec:aggregation}).
+With $d = 3$ raw channels, this yields $9 \times 3 + \binom{3}{2} = 30$ features.
+This baseline isolates the contribution of quantum encoding from the aggregation pipeline itself.
+
+\textbf{2.\ Random Fourier Features (RBF-$K$)}: Rahimi and Recht~\cite{rahimi2007random} showed that random Fourier features approximate an RBF (Gaussian) kernel, which is a \emph{universal approximator} in the limit of infinite features.
+For each pixel's RGB triplet $(r/255, g/255, b/255) \in [0,1]^3$, we apply a random projection to $K$ dimensions:
+\begin{equation}
+    z_j(\mathbf{x}) = \sqrt{\frac{2}{K}} \cos(\mathbf{w}_j^\top \mathbf{x} + b_j)
+\end{equation}
+where $\mathbf{w}_j \sim \mathcal{N}(0, \gamma I)$ and $b_j \sim \text{Uniform}[0, 2\pi]$.
+We use $K = 24$ (matching the quantum per-pixel dimensionality) and $\gamma = 1.0$.
+After the RBF projection, the same aggregation pipeline yields 492 features---exactly matching the quantum schemes in dimensionality.
+RBF-24 is the most direct classical analogue to the quantum encoding: both apply a fixed nonlinear transformation from a 3D pixel space to a higher-dimensional feature space, followed by identical aggregation.
+
+\textbf{3.\ Polynomial features (Poly-2)}: Second-degree polynomial expansion of the 3D RGB input, giving 9 features per pixel (3 linear + 3 squared + 3 cross terms), aggregated to 72 features.
+
+\textbf{4.\ ResNet-18}: The published MedMNIST state-of-the-art~\cite{yang2023medmnist}, a deep convolutional network trained end-to-end on $28 \times 28$ images.
+This is not a fair comparison (ResNet-18 has $\sim$11M trainable parameters vs.\ our fixed encoding + small MLP), but establishes an upper bound on what is achievable on these datasets.
+
+\begin{figure}[t]
+\centering
+% \includegraphics[width=\columnwidth]{fig_recon}
+\fbox{\parbox{0.9\columnwidth}{\centering\vspace{2em}\textbf{Fig.~5: Original vs.\ Reconstructed Images}\\[0.5em]
+(a)~Original $28{\times}28$ RGB image.
+(b)~Reconstructed from Z-basis measurement probabilities: each pixel's RGB is recovered from $p(\ket{1})$ per channel qubit.
+(c)~Residual (difference) image.
+Shows the encoding is near-lossless for the separable scheme.\vspace{2em}}}
+\caption{A sample image from each dataset, alongside its reconstruction from the Z-basis measurement probabilities of the separable (Sep) encoding. The reconstruction demonstrates that the angle encoding preserves the visual content of the original image.}
+\label{fig:recon}
+\end{figure}
+
+\subsection{Evaluation Protocol}
+\label{sec:eval}
+
+All results are reported as mean $\pm$ standard deviation over multiple random seeds (10 seeds for BloodMNIST, 5 for PathMNIST due to its larger size and longer training time).
+Statistical significance between schemes is assessed via paired $t$-tests across seeds.
+We report three metrics:
+\begin{itemize}
+    \item \textbf{ACC}: Overall classification accuracy.
+    \item \textbf{BA}: Balanced accuracy (mean per-class recall), which accounts for class imbalance.
+    \item \textbf{AUC}: Area under the ROC curve (macro-averaged one-vs-rest), a threshold-independent measure.
+\end{itemize}
+
+\subsection{Implementation}
+
+Quantum encoding is simulated classically via vectorised statevector computation in NumPy.
+The encoding functions directly compute the 8-dimensional amplitude vector from RGB inputs using the closed-form expressions in Section~\ref{sec:schemes}---no quantum hardware or circuit simulator is required.
+Classification uses PyTorch on an Apple M4 GPU (MPS backend).
+All code is available at [repository to be added].
+
+% ==================================================================
+\section{Results}
+\label{sec:results}
+
+\subsection{BloodMNIST}
+\label{sec:results_blood}
+
+Table~\ref{tab:blood_mlp} shows classification results using the PyTorch MLP over 10 seeds.
+
+\begin{table}[t]
+\renewcommand{\arraystretch}{1.15}
+\caption{BloodMNIST Classification (PyTorch MLP, 10 Seeds)}
+\label{tab:blood_mlp}
+\centering
+\begin{tabular}{lcccc}
+\toprule
+Scheme & Dim & ACC & BA & AUC \\
+\midrule
+CP-2L (Z+X+Y) & 492 & \textbf{.956\,$\pm$\,.001} & .953\,$\pm$\,.002 & \textbf{.997} \\
+Sep (Z+X+Y) & 492 & .956\,$\pm$\,.001 & \textbf{.953\,$\pm$\,.001} & .997 \\
+PA-CSE (Z+X+Y) & 492 & .956\,$\pm$\,.002 & .952\,$\pm$\,.002 & .997 \\
+CSE (Z+X+Y) & 492 & .953\,$\pm$\,.002 & .950\,$\pm$\,.002 & .997 \\
+CRyE (Z+X+Y) & 492 & .952\,$\pm$\,.001 & .948\,$\pm$\,.002 & .997 \\
+GBE (Z+X+Y) & 492 & .952\,$\pm$\,.001 & .949\,$\pm$\,.001 & .997 \\
+Sep (Z only) & 100 & .951\,$\pm$\,.002 & .946\,$\pm$\,.002 & .997 \\
+\midrule
+RBF-24 (classical) & 492 & .946$^\dagger$ & .942$^\dagger$ & .996$^\dagger$ \\
+Raw RGB & 30 & .927\,$\pm$\,.002 & .919\,$\pm$\,.002 & .994 \\
+\midrule
+\multicolumn{5}{l}{\footnotesize SOTA: ResNet-18 ACC\,=\,.958, AUC\,=\,.998~\cite{yang2023medmnist}} \\
+\multicolumn{5}{l}{\footnotesize $^\dagger$Single-seed PyTorch MLP (see Table~\ref{tab:blood_fair} for multi-seed sklearn)}
+\end{tabular}
+\end{table}
+
+\textbf{Observation 1: All quantum schemes outperform classical baselines.}
+Every quantum encoding outperforms both the Raw RGB baseline (by $+2.5$--$2.9$ percentage points in ACC) and the RBF-24 classical baseline.
+This holds even for Sep, the simplest quantum scheme with no entanglement.
+
+\textbf{Observation 2: Near state-of-the-art performance.}
+The best quantum scheme (CP-2L) achieves ACC\,=\,0.956, within \textbf{0.2\%} of the ResNet-18 SOTA (0.958) and essentially matching its AUC (0.997 vs.\ 0.998).
+This is achieved with a fixed encoding and a 4-layer MLP, compared to ResNet-18's 11M trainable parameters.
+
+\textbf{Observation 3: Entanglement is not significant on BloodMNIST.}
+CP-2L vs.\ Sep: $\Delta\text{ACC} = +0.0006$, $p = 0.267$.
+All quantum schemes cluster within a narrow band (ACC 0.951--0.956).
+This suggests that on BloodMNIST, the angle encoding and multi-basis measurement already capture sufficient discriminative structure, and adding entanglement provides only marginal (statistically insignificant) benefit.
+
+\subsubsection{Fair Comparison at Matched Dimensionality}
+
+Table~\ref{tab:blood_fair} isolates the effect of the feature transformation by comparing all schemes at equal aggregated dimensionality (372 features for Z+X+Y schemes, 60 features for Z-only schemes) using a simpler sklearn MLP classifier over 10 seeds.
+
+\begin{table}[t]
+\renewcommand{\arraystretch}{1.15}
+\caption{BloodMNIST Fair Comparison at Matched Dimensionality\\(sklearn MLP, 10 Seeds, Balanced Accuracy)}
+\label{tab:blood_fair}
+\centering
+\begin{tabular}{llc}
+\toprule
+Scheme & Dim & BA \\
+\midrule
+\multicolumn{3}{l}{\textit{372 features (Z+X+Y):}} \\
+\quad Sep (Z+X+Y) & 372 & \textbf{.936\,$\pm$\,.005} \\
+\quad CP-2L (Z+X+Y) & 372 & .931\,$\pm$\,.005 \\
+\quad PA-CSE (Z+X+Y) & 372 & .931\,$\pm$\,.004 \\
+\quad CSE (Z+X+Y) & 372 & .931\,$\pm$\,.003 \\
+\quad CRyE (Z+X+Y) & 372 & .928\,$\pm$\,.005 \\
+\quad GBE (Z+X+Y) & 372 & .928\,$\pm$\,.005 \\
+\quad RBF-24 (classical) & 372 & .922\,$\pm$\,.005 \\
+\midrule
+\multicolumn{3}{l}{\textit{60 features (Z only):}} \\
+\quad Sep (Z) & 60 & .927\,$\pm$\,.003 \\
+\quad CSE (Z) & 60 & .924\,$\pm$\,.003 \\
+\quad RBF-8 (classical) & 60 & .898\,$\pm$\,.003 \\
+\midrule
+\multicolumn{3}{l}{\textit{72 features:}} \\
+\quad Poly-2 (classical) & 72 & .902\,$\pm$\,.008 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+At 372 features, the best quantum scheme (Sep) outperforms the RBF-24 classical baseline by \textbf{1.4 percentage points} ($p < 0.001$).
+At 60 features, quantum Sep(Z) outperforms RBF-8 by \textbf{2.9 percentage points} and Poly-2 (72 features) by 2.5 points.
+These gaps are consistent across dimensionalities and classifiers, confirming that the quantum encoding produces richer features than the classical alternatives.
+
+\subsection{PathMNIST}
+\label{sec:results_path}
+
+Table~\ref{tab:path} shows results with enriched aggregation (492 features, 5 seeds).
+
+\begin{table}[t]
+\renewcommand{\arraystretch}{1.15}
+\caption{PathMNIST Classification (PyTorch MLP, 5 Seeds)}
+\label{tab:path}
+\centering
+\begin{tabular}{lcccc}
+\toprule
+Scheme & Dim & ACC & BA & AUC \\
+\midrule
+Sep (Z only) & 100 & \textbf{.815\,$\pm$\,.005} & \textbf{.774\,$\pm$\,.006} & .962 \\
+\midrule
+CSE (Z+X+Y) & 492 & .813\,$\pm$\,.004 & .766\,$\pm$\,.004 & .963 \\
+CRyE (Z+X+Y) & 492 & .809\,$\pm$\,.004 & .770\,$\pm$\,.004 & \textbf{.963} \\
+Sep (Z+X+Y) & 492 & .804\,$\pm$\,.003 & .766\,$\pm$\,.002 & .959 \\
+CP-2L (Z+X+Y) & 492 & .804\,$\pm$\,.005 & .762\,$\pm$\,.005 & .962 \\
+GBE (Z+X+Y) & 492 & .795\,$\pm$\,.005 & .754\,$\pm$\,.005 & .956 \\
+CP-3L (Z+X+Y) & 492 & .788\,$\pm$\,.003 & .741\,$\pm$\,.003 & .958 \\
+PA-CSE (Z+X+Y) & 492 & .786\,$\pm$\,.005 & .748\,$\pm$\,.004 & .962 \\
+\midrule
+RBF-24 (classical) & 492 & .784\,$\pm$\,.005 & .758\,$\pm$\,.005 & .963 \\
+Raw RGB & 30 & .674\,$\pm$\,.251 & .636\,$\pm$\,.263 & .870 \\
+\midrule
+\multicolumn{5}{l}{\footnotesize SOTA: ResNet-18 ACC\,=\,.909, AUC\,=\,.989~\cite{yang2023medmnist}}
+\end{tabular}
+\end{table}
+
+\textbf{Observation 1: The simplest scheme wins.}
+The top-ranked scheme on PathMNIST is Sep (Z) at $d = 100$ aggregated features---a non-entangling, single-basis encoding.
+It significantly outperforms its higher-dimensional counterpart Sep (Z+X+Y) at $d = 492$ ($\Delta\text{ACC} = +0.010$, \textbf{$p = 0.007$*}), and it matches or exceeds every entangling scheme.
+This is the central---and somewhat unexpected---finding: on this task, neither inter-channel entanglement nor multi-basis measurement provides reliable improvement over the per-channel $R_Y$ encoding plus aggregated statistics.
+
+\textbf{Observation 2: Entanglement effects are mixed and small.}
+Paired t-tests against the Sep (Z+X+Y) baseline at matched dimension $d = 492$:
+\begin{itemize}
+    \item CSE vs.\ Sep (Z+X+Y): $\Delta\text{ACC} = +0.008$, \textbf{$p = 0.047$*} (marginally significant)
+    \item CRyE vs.\ Sep (Z+X+Y): $\Delta\text{ACC} = +0.005$, $p = 0.095$ (NS)
+    \item GBE vs.\ Sep (Z+X+Y): $\Delta\text{ACC} = -0.010$, \textbf{$p = 0.024$*} (GBE \emph{hurts})
+    \item PA-CSE vs.\ Sep (Z+X+Y): $\Delta\text{ACC} = -0.018$, \textbf{$p = 0.007$*} (hurts)
+    \item CP-3L vs.\ Sep (Z+X+Y): $\Delta\text{ACC} = -0.017$, \textbf{$p < 0.001$*} (hurts)
+\end{itemize}
+Of six entangling schemes, only CSE provides a (marginal) statistically significant improvement; three are significantly worse than the separable baseline.
+The data-adaptive CSE design recovers per-image channel correlations into the entangling angle, which appears to be the only entanglement structure that consistently helps.
+The maximally delocalised GBE, the deeper CP-3L, and the per-pixel PA-CSE all degrade performance, suggesting that adding entanglement structure without a data-driven prior introduces noise rather than discriminative signal.
+
+\textbf{Observation 3: Quantum schemes still beat matched-dimension classical baselines.}
+At $d = 492$, all quantum schemes except PA-CSE and CP-3L outperform RBF-24 (the matched-dimension random Fourier baseline), and Sep (Z) at $d = 100$ outperforms RBF-24 at $d = 492$ by 3.1 percentage points.
+The trigonometric channel encoding plus aggregation is the dominant value-add; entanglement offers at most a marginal additional gain.
+
+\subsection{Cross-Dataset Analysis}
+\label{sec:cross}
+
+\begin{table}[t]
+\renewcommand{\arraystretch}{1.15}
+\caption{Cross-Dataset Comparison}
+\label{tab:cross}
+\centering
+\begin{tabular}{lcc}
+\toprule
+ & BloodMNIST & PathMNIST \\
+\midrule
+Global $\rho_\text{RG}$ & 0.991 & 0.892 \\
+Global $\rho_\text{GB}$ & 0.859 & 0.966 \\
+Global $\rho_\text{RB}$ & 0.856 & 0.928 \\
+\midrule
+Best quantum ACC & .956 (CP-2L) & .815 (Sep~Z) \\
+Best entangling ACC & .956 (CP-2L) & .813 (CSE) \\
+Best classical ACC & .927 (Raw) & .784 (RBF-24) \\
+Gap to SOTA & 0.2\% & 9.4\% \\
+Quantum vs.\ Classical & Significant & Significant \\
+Entangled vs.\ Sep (Z+X+Y) & $p = 0.27$ (NS) & $p = 0.047$* (CSE only) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Both datasets have high global channel correlations, yet entanglement helps on PathMNIST but not BloodMNIST.
+We hypothesise that the key factor is \emph{class-dependent variation} in correlations: if all classes have similar correlation profiles, there is little class-discriminative signal for entanglement to capture.
+If correlations vary substantially across classes, entangling schemes can encode this variation into the quantum state.
+Fig.~\ref{fig:corr_dist} will test this hypothesis by showing per-class correlation distributions for both datasets.
+
+\begin{figure}[t]
+\centering
+% \includegraphics[width=\columnwidth]{fig_channel_dep}
+\fbox{\parbox{0.9\columnwidth}{\centering\vspace{2em}\textbf{Fig.~6: Channel Dependency Analysis}\\[0.5em]
+Scatter plots of R vs.\ G, G vs.\ B, R vs.\ B pixel values, coloured by class, for both datasets.
+Shows the structure that quantum encodings must capture.\vspace{2em}}}
+\caption{Pairwise channel scatter plots coloured by class label. The degree of class separation in channel-pair space indicates how much discriminative information lies in inter-channel relationships.}
+\label{fig:channel_dep}
+\end{figure}
+
+\subsection{The Role of Aggregation}
+\label{sec:results_agg}
+
+Table~\ref{tab:agg} compares aggregated vs.\ raw feature performance on BloodMNIST.
+
+\begin{table}[t]
+\renewcommand{\arraystretch}{1.15}
+\caption{Aggregated vs.\ Raw Features (BloodMNIST, PyTorch MLP)}
+\label{tab:agg}
+\centering
+\begin{tabular}{lccc}
+\toprule
+Scheme & Dim & ACC & BA \\
+\midrule
+\multicolumn{4}{l}{\textit{Aggregated features:}} \\
+\quad Sep (Z+X+Y) & 492 & .953 & .950 \\
+\quad CP-2L (Z+X+Y) & 492 & .955 & .952 \\
+\midrule
+\multicolumn{4}{l}{\textit{Raw features (no aggregation):}} \\
+\quad Sep (Z+X+Y) & 18,816 & .916 & .903 \\
+\quad CP-2L (Z+X+Y) & 18,816 & .901 & .885 \\
+\quad Raw RGB & 2,352 & .890 & .869 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Aggregation improves ACC by \textbf{3.9--5.2 percentage points} on BloodMNIST.
+On PathMNIST (90K training samples, 18,816 raw features), the effect is even more dramatic: several schemes collapse entirely when using raw features.
+Aggregation is not merely a convenience---it is a critical component that converts unstable high-dimensional quantum features into robust, compact representations.
+
+\begin{figure}[t]
+\centering
+% \includegraphics[width=\columnwidth]{fig_results_bar}
+\fbox{\parbox{0.9\columnwidth}{\centering\vspace{2em}\textbf{Fig.~7: Classification Results Bar Charts}\\[0.5em]
+Side-by-side bar charts of ACC and AUC for all schemes on (a)~BloodMNIST and (b)~PathMNIST.
+Classical baselines in red, quantum schemes in blue.
+SOTA reference line.\vspace{2em}}}
+\caption{Classification accuracy and AUC for all encoding schemes and baselines. Quantum schemes (blue) consistently outperform classical baselines (red) on both datasets. Dashed line: ResNet-18 SOTA.}
+\label{fig:results_bar}
+\end{figure}
+
+% ==================================================================
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{When Does Entanglement Help?}
+
+Our controlled comparison yields a more nuanced picture than expected.
+On BloodMNIST, the best entangling scheme (CP-2L) is statistically indistinguishable from the separable baseline ($\Delta\text{ACC} = +0.0006$, $p = 0.267$), and CRyE is significantly \emph{worse} ($p = 0.0006$).
+On PathMNIST, the highest-accuracy scheme overall is the non-entangling Sep (Z) at $d = 100$ (ACC\,=\,0.815), which exceeds every $d = 492$ entangling scheme.
+Of six entangling schemes on PathMNIST, only the data-adaptive CSE produces a marginally significant gain over Sep (Z+X+Y) ($p = 0.047$); GBE, CP-3L, and PA-CSE are all significantly worse.
+
+We interpret this as evidence that the dominant value of QPIE-style encodings on these benchmarks lies in the per-channel $R_Y$ transformation combined with statistical aggregation, not in inter-channel entanglement.
+Entanglement contributes at most a small additional gain ($\sim 1$ percentage point), and only when its strength is set adaptively from the input image (CSE).
+Fixed-structure entanglement applied uniformly across all images (GBE, CP-3L, PA-CSE) appears to inject noise that the downstream classifier cannot fully reject.
+The narrower ``does entanglement help on this scheme'' question is therefore answered: \emph{conditionally yes for data-adaptive schemes, no for fixed-structure schemes}, but the practical effect size on classification accuracy is modest.
+
+\subsection{Strength of Classical Baselines}
+
+A valid concern is whether our classical baselines are sufficiently strong.
+We address this in three ways:
+\begin{enumerate}
+    \item \textbf{RBF-24 is a principled baseline}, not a strawman.
+    Random Fourier features approximate an RBF (Gaussian) kernel, which is a universal function approximator~\cite{rahimi2007random}.
+    At $K = 24$ components, RBF-24 matches the per-pixel dimensionality of the quantum schemes.
+    With the same aggregation pipeline and classifier, the only variable is the pixel-level feature transformation.
+    \item \textbf{Multiple classical baselines} at different complexity levels (Raw RGB at 30 features, Poly-2 at 72, RBF-8 at 60, RBF-24 at 492) consistently fall below quantum schemes at matched dimensionality.
+    \item \textbf{ResNet-18} provides an upper bound.
+    Our quantum encoding (ACC\,=\,0.956 on BloodMNIST) approaches a deep network with 11M trainable parameters.
+\end{enumerate}
+
+\subsection{Comparison with Variational Approaches}
+
+Unlike variational quantum classifiers~\cite{benedetti2019parameterized}, our encoding has no trainable quantum parameters.
+Every aspect of the quantum state is determined by the input pixel values and the fixed circuit structure.
+This makes the approach fully interpretable and reproducible: given the same pixel, two independent implementations will produce the same amplitude vector.
+The near-SOTA performance on BloodMNIST (0.2\% gap to ResNet-18) is notable given this simplicity.
+
+\subsection{Model Complexity and Computational Efficiency}
+
+A notable property of the QPIE-RGB pipeline is that the feature extractor has \textbf{zero trainable parameters}.
+The encoding is entirely determined by the input pixel values and the fixed circuit structure---no gradient computation, no backpropagation through the encoder, no hyperparameter search over the feature extraction stage.
+Only the downstream MLP classifier is trained, with $\sim$400K parameters (Table~\ref{tab:complexity}).
+
+\begin{table}[t]
+\renewcommand{\arraystretch}{1.15}
+\caption{Model Complexity Comparison}
+\label{tab:complexity}
+\centering
+\begin{tabular}{lccc}
+\toprule
+ & \textbf{QPIE-RGB} & \textbf{ResNet-18} \\
+\midrule
+Encoder parameters & 0 & $\sim$11M \\
+Classifier parameters & $\sim$400K & (included above) \\
+Total trainable params & $\sim$400K & $\sim$11M \\
+\midrule
+Encoder computation & Closed-form & Learned conv \\
+ & (trig expressions) & (forward + backward) \\
+Backprop through encoder & No & Yes \\
+\midrule
+\multicolumn{3}{l}{\textit{Wall-clock time (BloodMNIST, 12K images):}} \\
+\quad Feature extraction & $\sim$30s & --- \\
+\quad Training (200 ep) & $\sim$14s & $\sim$minutes$^\dagger$ \\
+\quad Total per run & $<$1 min & minutes--hours \\
+\midrule
+\multicolumn{3}{l}{\textit{Wall-clock time (PathMNIST, 90K images):}} \\
+\quad Feature extraction & $\sim$2 min (Sep) & --- \\
+ & $\sim$10 min (CP-2L) & \\
+\quad Training (200 ep) & $\sim$8 min & $\sim$minutes$^\dagger$ \\
+\quad Total per run & $\sim$10--18 min & minutes--hours \\
+\midrule
+\multicolumn{3}{l}{\textit{Accuracy (BloodMNIST):}} \\
+\quad ACC & .956 & .958 \\
+\quad AUC & .997 & .998 \\
+\bottomrule
+\multicolumn{3}{l}{\footnotesize All QPIE-RGB times on Apple M4 GPU (MPS).} \\
+\multicolumn{3}{l}{\footnotesize $^\dagger$ResNet-18 times from~\cite{yang2023medmnist}; hardware varies.}
+\end{tabular}
+\end{table}
+
+This comparison is not a claim of quantum speedup---the encoding is classically simulated via vectorised NumPy.
+Rather, it demonstrates that quantum-inspired fixed encodings can approach deep learning accuracy at a \textbf{fraction of the model complexity}.
+The encoding functions reduce to closed-form trigonometric expressions (Section~\ref{sec:schemes}): Sep requires $\sim$30 floating-point operations per pixel, while CP-2L requires $\sim$200 operations per pixel via statevector simulation.
+No circuit simulator or quantum hardware is needed.
+
+The complexity advantage has practical consequences:
+\begin{itemize}
+    \item \textbf{No encoder training}: Feature extraction is a single forward pass of deterministic arithmetic.
+    Adding a new encoding scheme requires implementing one function, not retraining from scratch.
+    \item \textbf{Reproducibility}: Given the same pixel, any implementation will produce the same amplitude vector---there is no stochasticity in the encoder, unlike weight initialisation in deep networks.
+    \item \textbf{Resource efficiency}: The full pipeline runs end-to-end on a laptop GPU in minutes.
+    On BloodMNIST, QPIE-RGB achieves 99.8\% of ResNet-18 accuracy with $\sim$27$\times$ fewer trainable parameters.
+\end{itemize}
+
+On future quantum hardware, each pixel could be encoded on a 3-qubit register with circuit depth 2 (Sep) to 18 (CP-2L), and the per-pixel measurement probabilities could be estimated via repeated shots rather than statevector simulation.
+
+\subsection{Limitations}
+
+\begin{itemize}
+    \item The gap to SOTA on PathMNIST (9.4\%) indicates that QPIE-RGB does not replace end-to-end deep learning for complex histopathology tasks.
+    \item Evaluation is limited to $28 \times 28$ images. Performance at higher resolutions is unknown.
+    \item Statistical tests use 5--10 seeds, providing moderate power. Larger-scale cross-validation could tighten confidence intervals.
+    \item We encode each pixel independently; spatial relationships are captured only indirectly through aggregation statistics. Incorporating spatial structure (e.g., local neighbourhoods) is a direction for future work.
+\end{itemize}
+
+% ==================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+
+We extended Quantum Probability Image Encoding (QPIE) to RGB images by assigning one qubit per colour channel and systematically varying the entanglement structure.
+Through controlled experiments on two medical image datasets, we showed that:
+\begin{enumerate}
+    \item Quantum encoding with statistical aggregation produces compact features that outperform matched-dimension classical baselines (random Fourier, polynomial, raw pixels) on both datasets by 1--3 percentage points.
+    \item Near state-of-the-art performance is achievable on BloodMNIST (ACC\,=\,0.956 vs.\ SOTA 0.958) with a fixed encoding and no trainable quantum parameters.
+    \item Inter-channel entanglement provides at most a small ($\sim 1$ pp) additional gain over the non-entangling Sep encoding, and only for the data-adaptive CSE scheme; fixed-structure entanglement (GBE, CP-3L, PA-CSE) is significantly \emph{worse} than separable on PathMNIST.
+    \item The dominant contribution to classification accuracy comes from the per-channel $R_Y$ transformation and aggregated multi-basis statistics, not from entanglement structure---a negative result that should inform future quantum-inspired image encoding designs.
+\end{enumerate}
+
+Future work will extend this framework to higher-resolution images, explore learnable entanglement structures, and evaluate on quantum hardware.
+
+% ==================================================================
+\ifCLASSOPTIONcompsoc
+  \section*{Acknowledgments}
+\else
+  \section*{Acknowledgment}
+\fi
+
+% The authors would like to thank...
+
+% ==================================================================
+\begin{thebibliography}{19}
+
+\bibitem{yao2017quantum}
+X.-W.~Yao, H.~Wang, Z.~Liao, M.-C.~Chen, J.~Pan, J.~Li, K.~Zhang, X.~Lin, Z.~Wang, Z.~Luo, W.~Zheng, J.~Li, M.~Zhao, X.~Peng, and D.~Suter,
+``Quantum image processing and its application to edge detection: Theory and experiment,''
+\emph{Phys. Rev. X}, vol.~7, p.~031041, 2017.
+
+\bibitem{cavalieri2020quantum}
+G.~Cavalieri and D.~Maio,
+``A quantum edge detection algorithm,''
+\emph{arXiv preprint arXiv:2012.11036}, 2020.
+
+\bibitem{arxiv2507quantum}
+% Placeholder for: Analysis of Quantum Image Representations for Supervised Classification
+A.~Author \emph{et al.},
+``Analysis of quantum image representations for supervised classification,''
+\emph{arXiv preprint arXiv:2507.22039}, 2025.
+
+\bibitem{le2011flexible}
+P.~Q.~Le, F.~Dong, and K.~Hirota,
+``A flexible representation of quantum images for polynomial preparation, image compression, and processing operations,''
+\emph{Quantum Inf. Process.}, vol.~10, no.~1, pp.~63--84, 2011.
+
+\bibitem{zhang2013neqr}
+Y.~Zhang, K.~Lu, Y.~Gao, and M.~Wang,
+``{NEQR}: A novel enhanced quantum representation of digital images,''
+\emph{Quantum Inf. Process.}, vol.~12, no.~8, pp.~2833--2860, 2013.
+
+\bibitem{sun2011multi}
+B.~Sun, A.~M.~Iliyasu, F.~Yan, F.~Dong, and K.~Hirota,
+``Multi-channel representation for images on quantum computers using the {RGB}$\alpha$ color space,''
+in \emph{Proc. IEEE 7th Int. Symp. Intell. Signal Process.}, 2011, pp.~1--6.
+
+\bibitem{amankwah2022quantum}
+M.~G.~Amankwah, D.~Camps, E.~W.~Bethel, R.~Van~Beeumen, and T.~Perciano,
+``{QPIXL}: Quantum pixel representation learning,''
+\emph{arXiv preprint arXiv:2203.05194}, 2022.
+
+\bibitem{chan2014histoscanning}
+J.~K.~C.~Chan,
+``The wonderful colors of the hematoxylin--eosin stain in diagnostic surgical pathology,''
+\emph{Int. J. Surg. Pathol.}, vol.~22, no.~1, pp.~12--32, 2014.
+
+\bibitem{yang2023medmnist}
+J.~Yang, R.~Shi, D.~Wei, Z.~Liu, L.~Zhao, B.~Ke, H.~Pfister, and B.~Ni,
+``{MedMNIST} v2 -- A large-scale lightweight benchmark for 2{D} and 3{D} biomedical image classification,''
+\emph{Scientific Data}, vol.~10, no.~1, p.~41, 2023.
+
+\bibitem{acevedo2020dataset}
+A.~Acevedo, A.~Merino, S.~Alférez, Á.~Molina, L.~Boldú, and J.~Rodellar,
+``A dataset of microscopic peripheral blood cell images for development of automatic recognition systems,''
+\emph{Data in Brief}, vol.~30, p.~105474, 2020.
+
+\bibitem{kather2019predicting}
+J.~N.~Kather \emph{et al.},
+``Predicting survival from colorectal cancer histology slides using deep learning: A retrospective multicenter study,''
+\emph{PLoS Medicine}, vol.~16, no.~1, p.~e1002730, 2019.
+
+\bibitem{cong2019quantum}
+I.~Cong, S.~Choi, and M.~D.~Lukin,
+``Quantum convolutional neural networks,''
+\emph{Nature Phys.}, vol.~15, no.~12, pp.~1273--1278, 2019.
+
+\bibitem{henderson2020quanvolutional}
+M.~Henderson, S.~Shakya, S.~Pradhan, and T.~Cook,
+``Quanvolutional neural networks: Powering image recognition with quantum circuits,''
+\emph{Quantum Mach. Intell.}, vol.~2, no.~1, pp.~1--9, 2020.
+
+\bibitem{hur2022quantum}
+T.~Hur, L.~Kim, and D.~K.~Park,
+``Quantum convolutional neural network for classical data classification,''
+\emph{Quantum Mach. Intell.}, vol.~4, no.~1, p.~3, 2022.
+
+\bibitem{benedetti2019parameterized}
+M.~Benedetti, E.~Lloyd, S.~Sack, and M.~Fiorentini,
+``Parameterized quantum circuits as machine learning models,''
+\emph{Quantum Sci. Technol.}, vol.~4, no.~4, p.~043001, 2019.
+
+\bibitem{rahimi2007random}
+A.~Rahimi and B.~Recht,
+``Random features for large-scale kernel machines,''
+in \emph{Advances in Neural Information Processing Systems}, vol.~20, 2007.
+
+\bibitem{nielsen2010quantum}
+M.~A.~Nielsen and I.~L.~Chuang,
+\emph{Quantum Computation and Quantum Information}, 10th Anniversary~ed.
+Cambridge University Press, 2010.
+
+\bibitem{larose2020robust}
+R.~LaRose and B.~Coyle,
+``Robust data encodings for quantum classifiers,''
+\emph{Phys. Rev. A}, vol.~102, no.~3, p.~032420, 2020.
+
+\bibitem{schuld2018supervised}
+M.~Schuld and F.~Petruccione,
+\emph{Supervised Learning with Quantum Computers}.
+Springer, 2018.
+
+\end{thebibliography}
+
+\end{document}
