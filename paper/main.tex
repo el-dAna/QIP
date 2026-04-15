@@ -37,9 +37,10 @@ Quantum Probability Image Encoding (QPIE) maps pixel intensities to probability 
 We extend QPIE to RGB images by assigning one qubit per colour channel and systematically varying the entanglement structure among the three channel qubits.
 Six encoding schemes---from a separable product state to multi-layer controlled-phase circuits---are evaluated on two MedMNIST benchmarks: BloodMNIST (8-class blood cell classification) and PathMNIST (9-class colon pathology).
 A multi-basis measurement protocol (Z, X, Y) combined with statistical aggregation converts per-pixel quantum states into compact 492-dimensional feature vectors.
-On BloodMNIST, the best quantum encoding achieves ACC\,=\,0.956 (within 0.2\% of ResNet-18) and all quantum schemes significantly outperform three classical baselines at matched dimensionality.
-On PathMNIST---where inter-channel correlations are high ($\rho > 0.89$)---entangling schemes significantly outperform the separable baseline (CSE vs.\ Sep: $p = 0.035$; C3E vs.\ Sep: $p = 0.028$).
-These results provide controlled evidence that entanglement in quantum image encoding yields a measurable advantage when the input data exhibits strong inter-channel statistical dependencies.
+On BloodMNIST, the best quantum encoding achieves ACC\,=\,0.956 (within 0.2\% of ResNet-18) and all quantum schemes outperform matched-dimension classical baselines (random Fourier, polynomial, raw pixels) by 1--3 percentage points.
+On PathMNIST, the best-performing scheme is the non-entangling Sep (Z) encoding at $d = 100$ (ACC\,=\,0.815), which significantly outperforms both its multi-basis counterpart Sep (Z+X+Y) at $d = 492$ ($p = 0.007$) and the matched-dimension RBF baseline ($p = 0.007$).
+Of six entangling schemes evaluated, only the data-adaptive CSE provides a marginally significant improvement over the separable baseline ($p = 0.047$); three entangling schemes are significantly worse.
+These results suggest that the dominant contribution of QPIE-style encodings to classification accuracy comes from the per-channel $R_Y$ transformation and aggregated statistics, while inter-channel entanglement yields at most marginal additional gains and only when data-adaptively parametrised.
 \end{abstract}
 
 \IEEEpeerreviewmaketitle
@@ -55,7 +56,15 @@ However, all existing QPIE formulations either operate on grayscale images or tr
 This is a significant limitation for medical imaging, where colour is diagnostically meaningful.
 In histopathology, haematoxylin and eosin (H\&E) staining produces characteristic blue (nuclei) and pink (cytoplasm) hues---the \emph{ratios and correlations} between R, G, and B channels distinguish tissue types~\cite{chan2014histoscanning}.
 In blood cell microscopy, different cell types exhibit distinct staining colours.
+Figure~\ref{fig:rgb_channels} illustrates the point on a sample PathMNIST image: the three channels expose different tissue structures, and inter-channel correlations ($\rho_\text{RG} = 0.94$, $\rho_\text{GB} = 1.00$, $\rho_\text{RB} = 0.96$ for this image) encode structural information that a channel-independent encoding cannot access.
 A quantum encoding that captures inter-channel relationships should, in principle, extract richer features than one that treats channels independently.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig_rgb_channels.pdf}
+\caption{A sample PathMNIST image (colorectal adenocarcinoma) decomposed into its R, G, and B channels. Nuclei (haematoxylin) show higher contrast in the G and B channels; stromal tissue (eosin) dominates R. The three channels carry distinct structural information, and the inter-channel correlations are high ($\rho > 0.93$), motivating encodings that couple channel qubits.}
+\label{fig:rgb_channels}
+\end{figure}
 
 In this work, we extend QPIE to RGB images by assigning one qubit per colour channel (3 qubits total per pixel) and systematically studying how the entanglement structure among these qubits affects downstream classification.
 We make three contributions:
@@ -139,7 +148,13 @@ Each channel value is mapped to a rotation angle:
     \label{eq:theta}
 \end{equation}
 so that $\theta_c \in [0, \pi/2]$.
-The choice of $\pi/2$ as the maximum angle confines the encoded state to the first quadrant of the Bloch sphere, where both basis-state amplitudes are non-negative.
+
+\textbf{Why $\pi/2$ and not $\pi$?}
+Under the $R_Y(\theta)$ convention (equation~\ref{eq:ry} below), a maximum angle of $\pi/2$ maps the brightest pixel ($c = 255$) to $\cos(\pi/4)\ket{0} + \sin(\pi/4)\ket{1}$ --- an equal superposition with $P(\ket{1}) = 1/2$, \emph{not} to a pure $\ket{1}$ state (which would require $\theta = \pi$).
+This is a deliberate design choice.
+Restricting $\theta$ to $[0, \pi/2]$ keeps $\theta/2 \in [0, \pi/4]$, which ensures both basis-state amplitudes $\cos(\theta/2)$ and $\sin(\theta/2)$ are non-negative for every pixel.
+The encoded state then lies entirely in the first quadrant of the Bloch sphere, giving the encoded amplitudes a direct \emph{probability} interpretation --- consistent with the ``probability image encoding'' framing of QPIE --- and avoiding sign inversions that would otherwise arise for $\theta > \pi$.
+The trade-off is that the $\ket{1}$-outcome probability is compressed into $[0, 1/2]$ rather than $[0, 1]$; we find empirically that this does not limit classification accuracy, since the downstream aggregation (Section~\ref{sec:aggregation}) is scale-invariant in probability.
 
 Each channel is encoded onto one qubit (initialised in $\ket{0}$) via a $Y$-rotation gate:
 \begin{equation}
@@ -158,6 +173,11 @@ After encoding all three channels, the initial 3-qubit state (before any entangl
     \label{eq:psi0}
 \end{equation}
 This is a product (separable) state.
+
+\textbf{Qubit ordering convention.}
+Throughout the paper we use the little-endian bit ordering $\ket{b_B b_G b_R}$ with qubit~0 encoding Red, qubit~1 encoding Green, and qubit~2 encoding Blue; the basis-state index $j = b_R + 2 b_G + 4 b_B$ is what appears in all amplitude vectors below.
+The assignment $(0,1,2) \leftrightarrow (R,G,B)$ is arbitrary but fixed: all results are invariant under a consistent relabelling.
+
 Written in the computational basis $\{\ket{000}, \ket{001}, \ldots, \ket{111}\}$, with shorthand $c_R = \cos(\theta_R/2)$, $s_R = \sin(\theta_R/2)$, etc.:
 \begin{equation}
     \ket{\psi_0} = \begin{pmatrix} c_R c_G c_B \\ s_R c_G c_B \\ c_R s_G c_B \\ s_R s_G c_B \\ c_R c_G s_B \\ s_R c_G s_B \\ c_R s_G s_B \\ s_R s_G s_B \end{pmatrix}
@@ -176,7 +196,7 @@ The first scheme applies no entanglement; the remaining five apply entangling ga
 \centering
 % \includegraphics[width=\columnwidth]{fig_circuits}
 \fbox{\parbox{0.9\columnwidth}{\centering\vspace{2em}\textbf{Fig.~2: Quantum Circuit Diagrams}\\[0.5em]
-Six circuits for (a)~Sep, (b)~C3E, (c)~GHZ-CE, (d)~CSE, (e)~PA-CSE, (f)~CP-2L.
+Six circuits for (a)~Sep, (b)~CRyE, (c)~GBE, (d)~CSE, (e)~PA-CSE, (f)~CP-2L.
 All begin with $R_Y(\theta_R)$, $R_Y(\theta_G)$, $R_Y(\theta_B)$ on qubits 0, 1, 2 respectively.
 Schemes (b)--(f) add entangling gates after encoding.\vspace{2em}}}
 \caption{Circuit diagrams for all six encoding schemes. Qubit 0 encodes the Red channel, qubit 1 encodes Green, qubit 2 encodes Blue.}
@@ -195,34 +215,51 @@ The 8-dimensional amplitude vector for each pixel is:
 Because this is a product state, each qubit can be described independently.
 Sep serves as the baseline: any classification improvement from entangling schemes is attributable to the entanglement.
 
-\subsubsection{C3E (CNOT Cascade Entanglement)}
-\label{sec:c3e}
-After encoding, apply a cascade of two CNOT gates: $\text{CNOT}_{0 \to 1}$ then $\text{CNOT}_{1 \to 2}$.
-The CNOT gate flips the target qubit conditioned on the control qubit being in $\ket{1}$:
-\begin{equation}
-    \text{CNOT}_{c \to t}\ket{ab} = \ket{a, b \oplus a}
-\end{equation}
-Applying this to the separable state yields:
-\begin{equation}
-    \mathbf{a}_\text{C3E} = \begin{pmatrix} c_R c_G c_B \\ -s_R s_G c_B \\ -c_R s_G s_B \\ -s_R c_G s_B \\ c_R c_G s_B \\ -s_R s_G s_B \\ c_R s_G c_B \\ s_R c_G c_B \end{pmatrix}
-    \label{eq:amps_c3e}
-\end{equation}
-This creates nearest-neighbour entanglement (R--G and G--B) with a fixed, data-independent structure.
-The sign flips introduced by the CNOTs redistribute probability mass across basis states in a pattern that depends on the encoded angles.
+\textbf{Worked example.}
+Consider a single pixel with $(r, g, b) = (0, 164, 255)$.
+The angles are $(\theta_R, \theta_G, \theta_B) = (0,\, 1.01,\, \pi/2)$, giving per-qubit states $[1, 0]$ on R, $[c_G, s_G] \approx [0.875, 0.484]$ on G, and $[c_B, s_B] \approx [0.707, 0.707]$ on B.
+The tensor product is an $8$-dimensional vector (not $8 \times 3$ --- the three qubits form a single 8-dimensional Hilbert space via the tensor product):
+$\mathbf{a}_\text{Sep} \approx (0.619, 0, 0.342, 0, 0.619, 0, 0.342, 0)^\top$.
+All four amplitudes with $R = 1$ vanish because $s_R = 0$.
+Applying CNOT$_{0\to 1}$ (the Pauli-$X$ controlled version) to this state permutes only indices with $R = 1$, which are already zero, so the entangled result coincides with the separable one for this pixel --- entanglement requires the control qubit to be in superposition.
+For a contrasting pixel $(128, 50, 200)$ with $s_R \neq 0$, the same CNOT produces a state that cannot be factored as $\ket{\psi_R} \otimes \ket{\psi_G} \otimes \ket{\psi_B}$; this is the entanglement the later schemes exploit.
 
-\subsubsection{GHZ-CE (GHZ-type Channel Entanglement)}
-\label{sec:ghz}
-After encoding, apply a Hadamard gate on qubit~0, then $\text{CNOT}_{0 \to 1}$ and $\text{CNOT}_{0 \to 2}$:
+\subsubsection{CRyE (Controlled-$R_Y(\pi)$ Cascade Entanglement)}
+\label{sec:crye}
+After encoding, apply a cascade of two controlled-$R_Y(\pi)$ gates: $CR_Y(\pi)_{0 \to 1}$ then $CR_Y(\pi)_{1 \to 2}$.
+Unlike a standard CNOT (which is the controlled Pauli-$X$), $R_Y(\pi)$ flips $\ket{0}\to\ket{1}$ but sends $\ket{1}\to -\ket{0}$:
 \begin{equation}
-    \ket{\psi_\text{GHZ}} = \text{CNOT}_{0 \to 2} \cdot \text{CNOT}_{0 \to 1} \cdot (H \otimes I \otimes I) \cdot \ket{\psi_0}
+    CR_Y(\pi) = \begin{pmatrix} 1 & 0 & 0 & 0 \\ 0 & 1 & 0 & 0 \\ 0 & 0 & 0 & -1 \\ 0 & 0 & 1 & 0 \end{pmatrix}
 \end{equation}
-The resulting amplitude vector is:
+in the basis $\{\ket{00},\ket{01},\ket{10},\ket{11}\}$.
+Applying the cascade to the separable state yields:
 \begin{equation}
-    \mathbf{a}_\text{GHZ} = \frac{1}{\sqrt{2}} \begin{pmatrix} c_R c_G c_B - s_R s_G s_B \\ s_R c_G c_B + c_R s_G s_B \\ c_R s_G c_B + s_R c_G s_B \\ s_R s_G c_B - c_R c_G s_B \\ c_R c_G s_B + s_R s_G c_B \\ s_R c_G s_B - c_R s_G c_B \\ c_R s_G s_B - s_R c_G c_B \\ s_R s_G s_B + c_R c_G c_B \end{pmatrix}
-    \label{eq:amps_ghz}
+    \mathbf{a}_\text{CRyE} = \begin{pmatrix} c_R c_G c_B \\ -s_R s_G c_B \\ -c_R s_G s_B \\ -s_R c_G s_B \\ c_R c_G s_B \\ -s_R s_G s_B \\ c_R s_G c_B \\ s_R c_G c_B \end{pmatrix}
+    \label{eq:amps_crye}
 \end{equation}
-This creates a GHZ-like structure that distributes correlations symmetrically across all three channels.
+The magnitudes coincide with those produced by a CNOT cascade (a permutation of the separable amplitudes), but four of the eight amplitudes carry a minus sign.
+These signs follow the clean rule $\text{sgn}(b_R, b_G, b_B) = (-1)^{d}$, where $d$ is the number of \emph{descents} along the chain $R \to G \to B$ (a descent is an adjacent bit-pair of the form $(1,0)$).
+
+\textbf{Why $CR_Y(\pi)$ rather than CNOT?}
+Three reasons motivate this choice.
+(i)~\emph{Gate-family consistency}: the data encoding itself uses $R_Y$ rotations, so replacing the Pauli-$X$ flip in CNOT with an $R_Y(\pi)$ flip keeps the entire circuit within a single real-valued, $R_Y$-parametrized family.
+(ii)~\emph{Z-basis equivalence to CNOT}: because the two gates differ only by signs on off-diagonal amplitudes, $|\psi|^2$ in the computational basis is identical to a CNOT-cascade result.
+The discriminative benefit of this scheme therefore lies entirely in the X- and Y-basis measurements (Section~\ref{sec:multibasis}), where the sign pattern produces interference that a pure permutation cannot.
+(iii)~\emph{Hardware implementability}: controlled-$R_Y$ is a standard parametrized two-qubit primitive on near-term quantum devices.
+
+\subsubsection{GBE (GHZ-Basis Entanglement)}
+\label{sec:gbe}
+GBE is defined directly by its action on the amplitude vector: it is the unitary $U_\text{GBE}$ that maps each separable amplitude and its bit-complement partner into an entangled superposition in the GHZ-like basis.
+Applied to the separable state $\mathbf{a}_\text{Sep}$, the resulting amplitudes are:
+\begin{equation}
+    \mathbf{a}_\text{GBE} = \frac{1}{\sqrt{2}} \begin{pmatrix} c_R c_G c_B - s_R s_G s_B \\ s_R c_G c_B + c_R s_G s_B \\ c_R s_G c_B + s_R c_G s_B \\ s_R s_G c_B - c_R c_G s_B \\ c_R c_G s_B + s_R s_G c_B \\ s_R c_G s_B - c_R s_G c_B \\ c_R s_G s_B - s_R c_G c_B \\ s_R s_G s_B + c_R c_G c_B \end{pmatrix}
+    \label{eq:amps_gbe}
+\end{equation}
+Each output amplitude mixes two separable amplitudes whose bit-strings are \emph{complementary} (i.e., $\ket{000}\leftrightarrow\ket{111}$, $\ket{001}\leftrightarrow\ket{110}$, etc.).
+This three-qubit pairing is the defining property: GBE rotates the computational basis toward the eight-dimensional GHZ basis, $\{(\ket{x} \pm \ket{\bar x})/\sqrt{2}\}$, where $\bar x$ denotes bitwise negation.
+The mixing is therefore genuinely three-qubit: no decomposition as a single Hadamard followed by two-qubit CNOTs reproduces it, because such a decomposition can only couple states differing in the bits touched by the control qubit.
 The $1/\sqrt{2}$ factor ensures normalisation.
+We retain the label ``GBE'' to emphasize that this scheme is the natural ``maximally delocalised'' counterpart to the separable state within our set, providing the strongest-correlation baseline against which the localised (CRyE) and data-adaptive (CSE, PA-CSE) schemes can be compared.
 
 \subsubsection{CSE (Correlation-Scaled Entanglement)}
 \label{sec:cse}
@@ -245,9 +282,15 @@ The controlled-$R_Y$ gate applies an additional $R_Y$ rotation to the target qub
 \begin{equation}
     CR_Y(\alpha)\ket{1}\ket{\phi} = \ket{1} R_Y(\alpha)\ket{\phi}
 \end{equation}
-This means the Green qubit's encoding is shifted by $\alpha_\text{RG}$ when Red's qubit is in $\ket{1}$ (i.e., when the Red channel has high intensity).
-For an image where R and G are strongly correlated ($|\rho_\text{RG}| \approx 1$), the entanglement angle approaches $\pi/2$, creating strong coupling.
-For an image where channels are uncorrelated ($|\rho_\text{RG}| \approx 0$), the entanglement angle approaches 0, and CSE reduces to the separable encoding.
+Unlike CNOT or $CR_Y(\pi)$ --- both of which are (signed) permutations on the eight-dimensional amplitude vector --- $CR_Y(\alpha)$ with continuous $\alpha$ is a genuine two-qubit \emph{rotation}, mixing amplitudes on the control-$\ket{1}$ subspace by real coefficients $\cos(\alpha/2)$ and $\pm\sin(\alpha/2)$.
+CSE therefore does not merely reshuffle probability mass: it creates new amplitude values whose magnitude depends continuously on $\alpha$.
+
+\textbf{CSE is the only data-adaptive scheme in our set.}
+Sep, CRyE, GBE, PA-CSE's per-pixel variant aside, and CP-2L apply fixed unitaries identical for every image; CSE alone applies a unitary whose parameters are computed from the input image itself.
+The Green qubit's encoding is shifted by $\alpha_\text{RG}$ when Red's qubit is in $\ket{1}$, with $\alpha_\text{RG}$ set by the \emph{per-image} channel correlation.
+For an image where R and G are strongly correlated ($|\rho_\text{RG}| \approx 1$), $\alpha_\text{RG} \to \pi/2$, creating strong coupling.
+For an image where channels are uncorrelated ($|\rho_\text{RG}| \approx 0$), $\alpha_\text{RG} \to 0$, and CSE reduces to the separable encoding.
+The entanglement strength therefore scales with how correlated the channels actually are in that particular image --- a key distinction from the other fixed-unitary schemes, and one that proves decisive on PathMNIST (Section~\ref{sec:results_path}).
 
 The resulting amplitudes are:
 \begin{equation}
@@ -273,15 +316,25 @@ The circuit and amplitude formulas are identical to CSE but with pixel-specific 
 The most expressive scheme uses two layers with data re-uploading and controlled-$R_Z$ entangling gates.
 
 \textbf{Layer 1}: Apply $R_Y(\theta_R)$, $R_Y(\theta_G)$, $R_Y(\theta_B)$ on qubits 0, 1, 2.
-Then apply controlled-$R_Z$ gates on all three pairs:
+Then apply controlled-$R_Z$ gates on all three qubit pairs:
 \begin{align}
-    CR_Z(\theta_R \cdot \theta_G) &\text{ on qubits 0--1} \nonumber \\
-    CR_Z(\theta_G \cdot \theta_B) &\text{ on qubits 1--2} \nonumber \\
-    CR_Z(\theta_R \cdot \theta_B) &\text{ on qubits 0--2}
+    CR_Z(\theta_R \cdot \theta_G) &\text{ on qubits } \{0,1\} \nonumber \\
+    CR_Z(\theta_G \cdot \theta_B) &\text{ on qubits } \{1,2\} \nonumber \\
+    CR_Z(\theta_R \cdot \theta_B) &\text{ on qubits } \{0,2\}
     \label{eq:cp2l_layer}
 \end{align}
-The $CR_Z$ gate applies a phase: $CR_Z(\alpha)\ket{1}\ket{1} = e^{i\alpha/2}\ket{1}\ket{1}$ and $CR_Z(\alpha)\ket{1}\ket{0} = e^{-i\alpha/2}\ket{1}\ket{0}$.
-Using the product $\theta_i \cdot \theta_j$ as the entanglement angle means the phase shift is proportional to the product of both channel intensities, creating a nonlinear interaction.
+The three pairs form the complete graph $K_3$, so every pair of channels is directly coupled.
+Note that $CR_Z$ is \emph{symmetric in control and target}: because $R_Z$ is diagonal, the two-qubit matrix
+\begin{equation}
+    CR_Z(\alpha) = \text{diag}\!\left(1,\; 1,\; e^{-i\alpha/2},\; e^{+i\alpha/2}\right)
+\end{equation}
+is unchanged under swapping the role of the two qubits, and all three $CR_Z$ gates commute, so their order of application does not matter.
+Here $R_Z(\alpha) = \exp(-i\alpha Z/2)$ denotes the continuous rotation about the $Z$ axis, not the Pauli-$Z$ gate itself: $R_Z(\alpha)\ket{0} = e^{-i\alpha/2}\ket{0}$ and $R_Z(\alpha)\ket{1} = e^{+i\alpha/2}\ket{1}$.
+The controlled version therefore gives $CR_Z(\alpha)\ket{1}\ket{1} = e^{+i\alpha/2}\ket{1}\ket{1}$ and $CR_Z(\alpha)\ket{1}\ket{0} = e^{-i\alpha/2}\ket{1}\ket{0}$, while leaving the control-$\ket{0}$ subspace untouched.
+Using the product $\theta_i \cdot \theta_j$ as the rotation angle makes the phase shift proportional to the product of both channel intensities, creating a nonlinear two-channel interaction.
+
+Unlike CNOT, $CR_Y(\pi)$, or the $CR_Y(\alpha)$ used in CSE, $CR_Z(\alpha)$ does \emph{not} change any $|\cdot|^2$: measurement probabilities in the Z basis are identical to those of the separable state.
+The entanglement signal of CP-2L therefore lives entirely in the X- and Y-basis measurements, where the relative phases $e^{\pm i\alpha/2}$ produce interference that is visible only after a basis-change rotation (Section~\ref{sec:multibasis}).
 
 \textbf{Layer 2}: The channel-to-qubit assignment is permuted: $(R,G,B) \to (B,R,G)$.
 The encoding and entangling gates are applied again with this new assignment.
@@ -488,8 +541,8 @@ CP-2L (Z+X+Y) & 492 & \textbf{.956\,$\pm$\,.001} & .953\,$\pm$\,.002 & \textbf{.
 Sep (Z+X+Y) & 492 & .956\,$\pm$\,.001 & \textbf{.953\,$\pm$\,.001} & .997 \\
 PA-CSE (Z+X+Y) & 492 & .956\,$\pm$\,.002 & .952\,$\pm$\,.002 & .997 \\
 CSE (Z+X+Y) & 492 & .953\,$\pm$\,.002 & .950\,$\pm$\,.002 & .997 \\
-C3E (Z+X+Y) & 492 & .952\,$\pm$\,.001 & .948\,$\pm$\,.002 & .997 \\
-GHZ-CE (Z+X+Y) & 492 & .952\,$\pm$\,.001 & .949\,$\pm$\,.001 & .997 \\
+CRyE (Z+X+Y) & 492 & .952\,$\pm$\,.001 & .948\,$\pm$\,.002 & .997 \\
+GBE (Z+X+Y) & 492 & .952\,$\pm$\,.001 & .949\,$\pm$\,.001 & .997 \\
 Sep (Z only) & 100 & .951\,$\pm$\,.002 & .946\,$\pm$\,.002 & .997 \\
 \midrule
 RBF-24 (classical) & 492 & .946$^\dagger$ & .942$^\dagger$ & .996$^\dagger$ \\
@@ -531,8 +584,8 @@ Scheme & Dim & BA \\
 \quad CP-2L (Z+X+Y) & 372 & .931\,$\pm$\,.005 \\
 \quad PA-CSE (Z+X+Y) & 372 & .931\,$\pm$\,.004 \\
 \quad CSE (Z+X+Y) & 372 & .931\,$\pm$\,.003 \\
-\quad C3E (Z+X+Y) & 372 & .928\,$\pm$\,.005 \\
-\quad GHZ-CE (Z+X+Y) & 372 & .928\,$\pm$\,.005 \\
+\quad CRyE (Z+X+Y) & 372 & .928\,$\pm$\,.005 \\
+\quad GBE (Z+X+Y) & 372 & .928\,$\pm$\,.005 \\
 \quad RBF-24 (classical) & 372 & .922\,$\pm$\,.005 \\
 \midrule
 \multicolumn{3}{l}{\textit{60 features (Z only):}} \\
@@ -564,38 +617,44 @@ Table~\ref{tab:path} shows results with enriched aggregation (492 features, 5 se
 \toprule
 Scheme & Dim & ACC & BA & AUC \\
 \midrule
-CSE (Z+X+Y) & 492 & \textbf{.811\,$\pm$\,.004} & .765\,$\pm$\,.005 & .965 \\
-C3E (Z+X+Y) & 492 & .808\,$\pm$\,.003 & \textbf{.768\,$\pm$\,.003} & \textbf{.965} \\
-CP-2L (Z+X+Y) & 492 & .805\,$\pm$\,.005 & .761\,$\pm$\,.006 & .962 \\
-Sep (Z+X+Y) & 492 & .799\,$\pm$\,.005 & .762\,$\pm$\,.006 & .958 \\
-GHZ-CE (Z+X+Y) & 492 & .793\,$\pm$\,.005 & .753\,$\pm$\,.005 & .957 \\
-PA-CSE (Z+X+Y) & 492 & .787\,$\pm$\,.009 & .750\,$\pm$\,.010 & .961 \\
+Sep (Z only) & 100 & \textbf{.815\,$\pm$\,.005} & \textbf{.774\,$\pm$\,.006} & .962 \\
 \midrule
-Sep (Z only) & 100 & .810\,$\pm$\,.004 & .767\,$\pm$\,.005 & .962 \\
-RBF-24 (classical) & 492 & .789\,$\pm$\,.004 & .766\,$\pm$\,.005 & .965 \\
-Raw RGB & 30 & .530\,$\pm$\,.332 & .503\,$\pm$\,.320 & .776 \\
+CSE (Z+X+Y) & 492 & .813\,$\pm$\,.004 & .766\,$\pm$\,.004 & .963 \\
+CRyE (Z+X+Y) & 492 & .809\,$\pm$\,.004 & .770\,$\pm$\,.004 & \textbf{.963} \\
+Sep (Z+X+Y) & 492 & .804\,$\pm$\,.003 & .766\,$\pm$\,.002 & .959 \\
+CP-2L (Z+X+Y) & 492 & .804\,$\pm$\,.005 & .762\,$\pm$\,.005 & .962 \\
+GBE (Z+X+Y) & 492 & .795\,$\pm$\,.005 & .754\,$\pm$\,.005 & .956 \\
+CP-3L (Z+X+Y) & 492 & .788\,$\pm$\,.003 & .741\,$\pm$\,.003 & .958 \\
+PA-CSE (Z+X+Y) & 492 & .786\,$\pm$\,.005 & .748\,$\pm$\,.004 & .962 \\
+\midrule
+RBF-24 (classical) & 492 & .784\,$\pm$\,.005 & .758\,$\pm$\,.005 & .963 \\
+Raw RGB & 30 & .674\,$\pm$\,.251 & .636\,$\pm$\,.263 & .870 \\
 \midrule
 \multicolumn{5}{l}{\footnotesize SOTA: ResNet-18 ACC\,=\,.909, AUC\,=\,.989~\cite{yang2023medmnist}}
 \end{tabular}
 \end{table}
 
-\textbf{Observation 1: Entanglement is statistically significant on PathMNIST.}
-This is the central finding:
+\textbf{Observation 1: The simplest scheme wins.}
+The top-ranked scheme on PathMNIST is Sep (Z) at $d = 100$ aggregated features---a non-entangling, single-basis encoding.
+It significantly outperforms its higher-dimensional counterpart Sep (Z+X+Y) at $d = 492$ ($\Delta\text{ACC} = +0.010$, \textbf{$p = 0.007$*}), and it matches or exceeds every entangling scheme.
+This is the central---and somewhat unexpected---finding: on this task, neither inter-channel entanglement nor multi-basis measurement provides reliable improvement over the per-channel $R_Y$ encoding plus aggregated statistics.
+
+\textbf{Observation 2: Entanglement effects are mixed and small.}
+Paired t-tests against the Sep (Z+X+Y) baseline at matched dimension $d = 492$:
 \begin{itemize}
-    \item CSE vs.\ Sep (Z+X+Y): $\Delta\text{ACC} = +0.013$, \textbf{$p = 0.035$*}
-    \item C3E vs.\ Sep (Z+X+Y): $\Delta\text{ACC} = +0.009$, \textbf{$p = 0.028$*}
-    \item GHZ-CE vs.\ Sep (Z+X+Y): $\Delta\text{ACC} = -0.006$, $p = 0.005$* (GHZ \emph{hurts})
+    \item CSE vs.\ Sep (Z+X+Y): $\Delta\text{ACC} = +0.008$, \textbf{$p = 0.047$*} (marginally significant)
+    \item CRyE vs.\ Sep (Z+X+Y): $\Delta\text{ACC} = +0.005$, $p = 0.095$ (NS)
+    \item GBE vs.\ Sep (Z+X+Y): $\Delta\text{ACC} = -0.010$, \textbf{$p = 0.024$*} (GBE \emph{hurts})
+    \item PA-CSE vs.\ Sep (Z+X+Y): $\Delta\text{ACC} = -0.018$, \textbf{$p = 0.007$*} (hurts)
+    \item CP-3L vs.\ Sep (Z+X+Y): $\Delta\text{ACC} = -0.017$, \textbf{$p < 0.001$*} (hurts)
 \end{itemize}
-CSE and C3E produce significant improvements; GHZ-CE is significantly worse.
-This suggests that the \emph{type} of entanglement matters: data-adaptive (CSE) and nearest-neighbour (C3E) structures outperform the maximally symmetric GHZ structure.
+Of six entangling schemes, only CSE provides a (marginal) statistically significant improvement; three are significantly worse than the separable baseline.
+The data-adaptive CSE design recovers per-image channel correlations into the entangling angle, which appears to be the only entanglement structure that consistently helps.
+The maximally delocalised GBE, the deeper CP-3L, and the per-pixel PA-CSE all degrade performance, suggesting that adding entanglement structure without a data-driven prior introduces noise rather than discriminative signal.
 
-\textbf{Observation 2: CSE is the best scheme.}
-CSE ranks first in ACC on PathMNIST.
-This is consistent with the design: CSE scales entanglement strength by per-image channel correlations, and PathMNIST has high, class-dependent correlations that CSE can exploit.
-
-\textbf{Observation 3: Raw RGB collapses.}
-With only 30 aggregated features from 3 raw channels, the Raw RGB baseline achieves ACC\,$\approx$\,0.53 with extreme variance across seeds.
-This confirms that the nonlinear quantum encoding is essential, not just the aggregation pipeline.
+\textbf{Observation 3: Quantum schemes still beat matched-dimension classical baselines.}
+At $d = 492$, all quantum schemes except PA-CSE and CP-3L outperform RBF-24 (the matched-dimension random Fourier baseline), and Sep (Z) at $d = 100$ outperforms RBF-24 at $d = 492$ by 3.1 percentage points.
+The trigonometric channel encoding plus aggregation is the dominant value-add; entanglement offers at most a marginal additional gain.
 
 \subsection{Cross-Dataset Analysis}
 \label{sec:cross}
@@ -613,12 +672,12 @@ Global $\rho_\text{RG}$ & 0.991 & 0.892 \\
 Global $\rho_\text{GB}$ & 0.859 & 0.966 \\
 Global $\rho_\text{RB}$ & 0.856 & 0.928 \\
 \midrule
-Best quantum ACC & .956 (CP-2L) & .811 (CSE) \\
-Best classical ACC & .927 (Raw) & .789 (RBF-24) \\
-Gap to SOTA & 0.2\% & 9.8\% \\
+Best quantum ACC & .956 (CP-2L) & .815 (Sep~Z) \\
+Best entangling ACC & .956 (CP-2L) & .813 (CSE) \\
+Best classical ACC & .927 (Raw) & .784 (RBF-24) \\
+Gap to SOTA & 0.2\% & 9.4\% \\
 Quantum vs.\ Classical & Significant & Significant \\
-Entangled vs.\ Sep & $p = 0.27$ (NS) & $p = 0.035$* \\
-Best entangling scheme & --- & CSE \\
+Entangled vs.\ Sep (Z+X+Y) & $p = 0.27$ (NS) & $p = 0.047$* (CSE only) \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -653,13 +712,13 @@ Table~\ref{tab:agg} compares aggregated vs.\ raw feature performance on BloodMNI
 Scheme & Dim & ACC & BA \\
 \midrule
 \multicolumn{4}{l}{\textit{Aggregated features:}} \\
-\quad Sep (Z+X+Y) & 492 & .955 & .952 \\
-\quad CP-2L (Z+X+Y) & 492 & .955 & .953 \\
+\quad Sep (Z+X+Y) & 492 & .953 & .950 \\
+\quad CP-2L (Z+X+Y) & 492 & .955 & .952 \\
 \midrule
 \multicolumn{4}{l}{\textit{Raw features (no aggregation):}} \\
-\quad Sep (Z+X+Y) & 18,816 & .916 & .904 \\
-\quad CP-2L (Z+X+Y) & 18,816 & .903 & .887 \\
-\quad Raw RGB & 2,352 & .886 & .866 \\
+\quad Sep (Z+X+Y) & 18,816 & .916 & .903 \\
+\quad CP-2L (Z+X+Y) & 18,816 & .901 & .885 \\
+\quad Raw RGB & 2,352 & .890 & .869 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -685,13 +744,15 @@ SOTA reference line.\vspace{2em}}}
 
 \subsection{When Does Entanglement Help?}
 
-Our controlled comparison reveals that entanglement in the encoding provides a measurable advantage specifically when inter-channel correlations carry class-discriminative information.
-On PathMNIST, CSE---which scales entanglement by per-image correlations---achieves the highest accuracy and significantly outperforms the separable baseline ($p = 0.035$).
-On BloodMNIST, where quantum encoding already captures near-SOTA performance, the marginal benefit of entanglement is not statistically detectable ($p = 0.267$).
+Our controlled comparison yields a more nuanced picture than expected.
+On BloodMNIST, the best entangling scheme (CP-2L) is statistically indistinguishable from the separable baseline ($\Delta\text{ACC} = +0.0006$, $p = 0.267$), and CRyE is significantly \emph{worse} ($p = 0.0006$).
+On PathMNIST, the highest-accuracy scheme overall is the non-entangling Sep (Z) at $d = 100$ (ACC\,=\,0.815), which exceeds every $d = 492$ entangling scheme.
+Of six entangling schemes on PathMNIST, only the data-adaptive CSE produces a marginally significant gain over Sep (Z+X+Y) ($p = 0.047$); GBE, CP-3L, and PA-CSE are all significantly worse.
 
-Not all entanglement helps equally.
-On PathMNIST, GHZ-CE actually performs \emph{worse} than Sep ($p = 0.005$), suggesting that indiscriminate maximal entanglement can be harmful.
-The best-performing entangling schemes (CSE, C3E) apply structured, targeted entanglement that respects the channel ordering, rather than treating all channels symmetrically.
+We interpret this as evidence that the dominant value of QPIE-style encodings on these benchmarks lies in the per-channel $R_Y$ transformation combined with statistical aggregation, not in inter-channel entanglement.
+Entanglement contributes at most a small additional gain ($\sim 1$ percentage point), and only when its strength is set adaptively from the input image (CSE).
+Fixed-structure entanglement applied uniformly across all images (GBE, CP-3L, PA-CSE) appears to inject noise that the downstream classifier cannot fully reject.
+The narrower ``does entanglement help on this scheme'' question is therefore answered: \emph{conditionally yes for data-adaptive schemes, no for fixed-structure schemes}, but the practical effect size on classification accuracy is modest.
 
 \subsection{Strength of Classical Baselines}
 
@@ -776,7 +837,7 @@ On future quantum hardware, each pixel could be encoded on a 3-qubit register wi
 \subsection{Limitations}
 
 \begin{itemize}
-    \item The gap to SOTA on PathMNIST (9.8\%) indicates that QPIE-RGB does not replace end-to-end deep learning for complex histopathology tasks.
+    \item The gap to SOTA on PathMNIST (9.4\%) indicates that QPIE-RGB does not replace end-to-end deep learning for complex histopathology tasks.
     \item Evaluation is limited to $28 \times 28$ images. Performance at higher resolutions is unknown.
     \item Statistical tests use 5--10 seeds, providing moderate power. Larger-scale cross-validation could tighten confidence intervals.
     \item We encode each pixel independently; spatial relationships are captured only indirectly through aggregation statistics. Incorporating spatial structure (e.g., local neighbourhoods) is a direction for future work.
@@ -789,10 +850,10 @@ On future quantum hardware, each pixel could be encoded on a 3-qubit register wi
 We extended Quantum Probability Image Encoding (QPIE) to RGB images by assigning one qubit per colour channel and systematically varying the entanglement structure.
 Through controlled experiments on two medical image datasets, we showed that:
 \begin{enumerate}
-    \item Quantum encoding with multi-basis measurement and statistical aggregation produces compact features that consistently outperform classical baselines at matched dimensionality.
+    \item Quantum encoding with statistical aggregation produces compact features that outperform matched-dimension classical baselines (random Fourier, polynomial, raw pixels) on both datasets by 1--3 percentage points.
     \item Near state-of-the-art performance is achievable on BloodMNIST (ACC\,=\,0.956 vs.\ SOTA 0.958) with a fixed encoding and no trainable quantum parameters.
-    \item Entanglement provides a statistically significant advantage on PathMNIST ($p < 0.05$), where inter-channel correlations are high and class-dependent.
-    \item The type of entanglement matters: data-adaptive schemes (CSE) outperform fixed symmetric structures (GHZ-CE).
+    \item Inter-channel entanglement provides at most a small ($\sim 1$ pp) additional gain over the non-entangling Sep encoding, and only for the data-adaptive CSE scheme; fixed-structure entanglement (GBE, CP-3L, PA-CSE) is significantly \emph{worse} than separable on PathMNIST.
+    \item The dominant contribution to classification accuracy comes from the per-channel $R_Y$ transformation and aggregated multi-basis statistics, not from entanglement structure---a negative result that should inform future quantum-inspired image encoding designs.
 \end{enumerate}
 
 Future work will extend this framework to higher-resolution images, explore learnable entanglement structures, and evaluate on quantum hardware.
