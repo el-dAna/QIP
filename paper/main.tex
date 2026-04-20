@@ -227,14 +227,31 @@ For a contrasting pixel $(128, 50, 200)$ with $s_R \neq 0$, the same CNOT produc
 \subsubsection{CRyE (Controlled-$R_Y(\pi)$ Cascade Entanglement)}
 \label{sec:crye}
 After encoding, apply a cascade of two controlled-$R_Y(\pi)$ gates: $CR_Y(\pi)_{0 \to 1}$ then $CR_Y(\pi)_{1 \to 2}$.
-Unlike a standard CNOT (which is the controlled Pauli-$X$), $R_Y(\pi)$ flips $\ket{0}\to\ket{1}$ but sends $\ket{1}\to -\ket{0}$:
+Unlike a standard CNOT (which is the controlled Pauli-$X$), $R_Y(\pi)$ flips $\ket{0}\to\ket{1}$ but sends $\ket{1}\to -\ket{0}$.
+In the little-endian two-qubit basis $\{\ket{00},\ket{01},\ket{10},\ket{11}\}$ with control qubit on the \emph{least-significant} bit (rightmost), the gate reads
 \begin{equation}
-    CR_Y(\pi) = \begin{pmatrix} 1 & 0 & 0 & 0 \\ 0 & 1 & 0 & 0 \\ 0 & 0 & 0 & -1 \\ 0 & 0 & 1 & 0 \end{pmatrix}
+    CR_Y(\pi) = \begin{pmatrix} 1 & 0 & 0 & 0 \\ 0 & 0 & 0 & -1 \\ 0 & 0 & 1 & 0 \\ 0 & 1 & 0 & 0 \end{pmatrix},
 \end{equation}
-in the basis $\{\ket{00},\ket{01},\ket{10},\ket{11}\}$.
-Applying the cascade to the separable state yields:
+i.e.\ $\ket{00}\to\ket{00}$, $\ket{01}\to\ket{11}$, $\ket{10}\to\ket{10}$, $\ket{11}\to -\ket{01}$ (the control bit is the rightmost bit in $\ket{q_\text{tgt}\,q_\text{ctrl}}$).
+This is the transpose of the textbook control-on-MSB form and agrees with the indexing convention fixed in~(\ref{eq:sep_vector}).
+It is convenient to derive the result for a generic cascade $CR_Y(\alpha_\text{RG})_{0\to 1}$, $CR_Y(\alpha_\text{GB})_{1\to 2}$ and then specialise to $\alpha=\pi$; the same derivation will be reused verbatim for CSE (Section~\ref{sec:cse}), which differs only in the choice of angles.
+Let $G' = G + \alpha_\text{RG}/2$ and $B' = B + \alpha_\text{GB}/2$ denote the rotated half-angles that appear whenever the respective control qubit is $\ket{1}$; the controlled-$R_Y$ gate leaves the target untouched on the $\ket{0}$-branch of the control and applies $R_Y(\alpha)$ on the $\ket{1}$-branch, so each amplitude picks up primed angles precisely on the bits indicated by its index.
+The output amplitudes, in the little-endian ordering $j = q_R + 2 q_G + 4 q_B$, are
 \begin{equation}
-    \mathbf{a}_\text{CRyE} = \begin{pmatrix} c_R c_G c_B \\ -s_R s_G c_B \\ -c_R s_G s_B \\ -s_R c_G s_B \\ c_R c_G s_B \\ -s_R s_G s_B \\ c_R s_G c_B \\ s_R c_G c_B \end{pmatrix}
+    \mathbf{a}^\text{gen}_\text{ctrl-$R_Y$} = \begin{pmatrix} c_R c_G c_B \\ s_R c_{G'} c_B \\ c_R s_G c_{B'} \\ s_R s_{G'} c_{B'} \\ c_R c_G s_B \\ s_R c_{G'} s_B \\ c_R s_G s_{B'} \\ s_R s_{G'} s_{B'} \end{pmatrix}.
+    \label{eq:amps_ctrl_ry_generic}
+\end{equation}
+The pattern is transparent: index $j$ carries $c_R$ if bit~0 is $0$ and $s_R$ otherwise; $c_G$ vs.\ $s_G$ is gated by bit~1 (and promoted to $c_{G'}$/$s_{G'}$ whenever bit~0 is $1$); $c_B$ vs.\ $s_B$ is gated by bit~2 (and promoted to the primed form whenever bit~1 is $1$).
+
+CRyE is the $\alpha_\text{RG} = \alpha_\text{GB} = \pi$ specialisation of~(\ref{eq:amps_ctrl_ry_generic}).
+At $\alpha = \pi$ the primed half-angles collapse to
+\[
+c_{X'} = \cos\tfrac{\theta_X + \pi}{2} = -s_X, \qquad s_{X'} = \sin\tfrac{\theta_X + \pi}{2} = c_X,
+\]
+so each primed factor swaps $c\leftrightarrow s$ and injects a sign on the cosine branch.
+Substituting into~(\ref{eq:amps_ctrl_ry_generic}) gives
+\begin{equation}
+    \mathbf{a}_\text{CRyE} = \begin{pmatrix} c_R c_G c_B \\ -s_R s_G c_B \\ -c_R s_G s_B \\ -s_R c_G s_B \\ c_R c_G s_B \\ -s_R s_G s_B \\ c_R s_G c_B \\ s_R c_G c_B \end{pmatrix}.
     \label{eq:amps_crye}
 \end{equation}
 The magnitudes coincide with those produced by a CNOT cascade (a permutation of the separable amplitudes), but four of the eight amplitudes carry a minus sign.
@@ -257,8 +274,26 @@ Applied to the separable state $\mathbf{a}_\text{Sep}$, the resulting amplitudes
 \end{equation}
 Each output amplitude mixes two separable amplitudes whose bit-strings are \emph{complementary} (i.e., $\ket{000}\leftrightarrow\ket{111}$, $\ket{001}\leftrightarrow\ket{110}$, etc.).
 This three-qubit pairing is the defining property: GBE rotates the computational basis toward the eight-dimensional GHZ basis, $\{(\ket{x} \pm \ket{\bar x})/\sqrt{2}\}$, where $\bar x$ denotes bitwise negation.
-The mixing is therefore genuinely three-qubit: no decomposition as a single Hadamard followed by two-qubit CNOTs reproduces it, because such a decomposition can only couple states differing in the bits touched by the control qubit.
-The $1/\sqrt{2}$ factor ensures normalisation.
+
+The corresponding $8 \times 8$ unitary, in the little-endian basis $\{\ket{000},\ket{001},\ldots,\ket{111}\}$, is block-diagonal on the four bit-complement pairs $\{0,7\}$, $\{1,6\}$, $\{2,5\}$, $\{3,4\}$:
+\begin{equation}
+    U_\text{GBE} = \frac{1}{\sqrt{2}}
+    \begin{pmatrix}
+    1 & 0 & 0 & 0 & 0 & 0 & 0 & -1 \\
+    0 & 1 & 0 & 0 & 0 & 0 & 1 & 0 \\
+    0 & 0 & 1 & 0 & 0 & 1 & 0 & 0 \\
+    0 & 0 & 0 & 1 & -1 & 0 & 0 & 0 \\
+    0 & 0 & 0 & 1 & 1 & 0 & 0 & 0 \\
+    0 & 0 & -1 & 0 & 0 & 1 & 0 & 0 \\
+    0 & -1 & 0 & 0 & 0 & 0 & 1 & 0 \\
+    1 & 0 & 0 & 0 & 0 & 0 & 0 & 1
+    \end{pmatrix}
+    \label{eq:u_gbe}
+\end{equation}
+Each row has exactly two nonzero entries of magnitude $1/\sqrt{2}$, coupling an amplitude with its bit-complement partner, which makes unitarity (row-orthonormality) straightforward to verify by inspection.
+Applying $U_\text{GBE}$ column-by-column to $\mathbf{a}_\text{Sep}$ in~(\ref{eq:sep_vector}) reproduces (\ref{eq:amps_gbe}) entry-by-entry.
+The mixing is genuinely three-qubit: no decomposition as a single Hadamard followed by two-qubit CNOTs reproduces $U_\text{GBE}$, because such a decomposition can only couple states differing in the bits touched by the control qubit, whereas the blocks above couple states differing in \emph{all three} bits simultaneously.
+The overall $1/\sqrt{2}$ factor ensures normalisation.
 We retain the label ``GBE'' to emphasize that this scheme is the natural ``maximally delocalised'' counterpart to the separable state within our set, providing the strongest-correlation baseline against which the localised (CRyE) and data-adaptive (CSE, PA-CSE) schemes can be compared.
 
 \subsubsection{CSE (Correlation-Scaled Entanglement)}
@@ -292,12 +327,13 @@ For an image where R and G are strongly correlated ($|\rho_\text{RG}| \approx 1$
 For an image where channels are uncorrelated ($|\rho_\text{RG}| \approx 0$), $\alpha_\text{RG} \to 0$, and CSE reduces to the separable encoding.
 The entanglement strength therefore scales with how correlated the channels actually are in that particular image --- a key distinction from the other fixed-unitary schemes, and one that proves decisive on PathMNIST (Section~\ref{sec:results_path}).
 
-The resulting amplitudes are:
+CSE shares the controlled-$R_Y$ cascade with CRyE and therefore inherits the generic amplitude form~(\ref{eq:amps_ctrl_ry_generic}) derived in Section~\ref{sec:crye}; only the angles differ.
+With $c_{G'} = \cos((\theta_G + \alpha_\text{RG})/2)$, $s_{G'} = \sin((\theta_G + \alpha_\text{RG})/2)$, and similarly $c_{B'}, s_{B'}$ using $\theta_B + \alpha_\text{GB}$, the resulting amplitudes are
 \begin{equation}
-    \mathbf{a}_\text{CSE} = \begin{pmatrix} c_R c_G c_B \\ s_R c_{G'} c_B \\ c_R s_G c_{B'} \\ s_R s_{G'} c_{B'} \\ c_R c_G s_B \\ s_R c_{G'} s_B \\ c_R s_G s_{B'} \\ s_R s_{G'} s_{B'} \end{pmatrix}
+    \mathbf{a}_\text{CSE} = \begin{pmatrix} c_R c_G c_B \\ s_R c_{G'} c_B \\ c_R s_G c_{B'} \\ s_R s_{G'} c_{B'} \\ c_R c_G s_B \\ s_R c_{G'} s_B \\ c_R s_G s_{B'} \\ s_R s_{G'} s_{B'} \end{pmatrix}.
     \label{eq:amps_cse}
 \end{equation}
-where $c_{G'} = \cos((\theta_G + \alpha_\text{RG})/2)$, $s_{G'} = \sin((\theta_G + \alpha_\text{RG})/2)$, and similarly $c_{B'}, s_{B'}$ use $\theta_B + \alpha_\text{GB}$.
+CRyE is recovered as the $\alpha_\text{RG} = \alpha_\text{GB} = \pi$ limit, whereupon $c_{X'}\to -s_X$ and $s_{X'}\to c_X$ reproduce~(\ref{eq:amps_crye}) with its $(-1)^d$ descent signs; CSE interpolates smoothly between the separable state ($\alpha\to 0$, $c_{X'}\to c_X$, $s_{X'}\to s_X$) and CRyE ($\alpha\to\pi$) as the per-image channel correlation varies.
 
 \subsubsection{PA-CSE (Pixel-Adaptive CSE)}
 \label{sec:pa_cse}
@@ -324,11 +360,12 @@ Then apply controlled-$R_Z$ gates on all three qubit pairs:
     \label{eq:cp2l_layer}
 \end{align}
 The three pairs form the complete graph $K_3$, so every pair of channels is directly coupled.
-Note that $CR_Z$ is \emph{symmetric in control and target}: because $R_Z$ is diagonal, the two-qubit matrix
+In the little-endian two-qubit basis $\{\ket{00},\ket{01},\ket{10},\ket{11}\}$ with control qubit on the least-significant (rightmost) bit, the gate is
 \begin{equation}
-    CR_Z(\alpha) = \text{diag}\!\left(1,\; 1,\; e^{-i\alpha/2},\; e^{+i\alpha/2}\right)
+    CR_Z(\alpha) = \text{diag}\!\left(1,\; e^{-i\alpha/2},\; 1,\; e^{+i\alpha/2}\right),
 \end{equation}
-is unchanged under swapping the role of the two qubits, and all three $CR_Z$ gates commute, so their order of application does not matter.
+consistent with the indexing fixed in~(\ref{eq:sep_vector}).
+All three $CR_Z$ gates used below are diagonal in the computational basis and therefore pairwise commute, so their order of application does not matter (though the operator is \emph{not} symmetric in control and target in general, since e.g.\ $CR_Z(\alpha)_{0\to 1}$ and $CR_Z(\alpha)_{1\to 0}$ differ on the $\ket{01}$ and $\ket{10}$ amplitudes).
 Here $R_Z(\alpha) = \exp(-i\alpha Z/2)$ denotes the continuous rotation about the $Z$ axis, not the Pauli-$Z$ gate itself: $R_Z(\alpha)\ket{0} = e^{-i\alpha/2}\ket{0}$ and $R_Z(\alpha)\ket{1} = e^{+i\alpha/2}\ket{1}$.
 The controlled version therefore gives $CR_Z(\alpha)\ket{1}\ket{1} = e^{+i\alpha/2}\ket{1}\ket{1}$ and $CR_Z(\alpha)\ket{1}\ket{0} = e^{-i\alpha/2}\ket{1}\ket{0}$, while leaving the control-$\ket{0}$ subspace untouched.
 Using the product $\theta_i \cdot \theta_j$ as the rotation angle makes the phase shift proportional to the product of both channel intensities, creating a nonlinear two-channel interaction.
