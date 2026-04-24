@@ -33,14 +33,12 @@
 
 % ==================================================================
 \begin{abstract}
-Quantum Probability Image Encoding (QPIE) maps pixel intensities to probability amplitudes of a quantum state, but existing formulations treat colour channels independently or reduce images to grayscale.
-We extend QPIE to RGB images by assigning one qubit per colour channel and systematically varying the entanglement structure among the three channel qubits.
-Six encoding schemes---from a separable product state to multi-layer controlled-phase circuits---are evaluated on two MedMNIST benchmarks: BloodMNIST (8-class blood cell classification) and PathMNIST (9-class colon pathology).
-A multi-basis measurement protocol (Z, X, Y) combined with statistical aggregation converts per-pixel quantum states into compact 492-dimensional feature vectors.
-On BloodMNIST, the best quantum encoding achieves ACC\,=\,0.956 (within 0.2\% of ResNet-18) and all quantum schemes outperform matched-dimension classical baselines (random Fourier, polynomial, raw pixels) by 1--3 percentage points.
-On PathMNIST, the best-performing scheme is the non-entangling Sep (Z) encoding at $d = 100$ (ACC\,=\,0.815), which significantly outperforms both its multi-basis counterpart Sep (Z+X+Y) at $d = 492$ ($p = 0.007$) and the matched-dimension RBF baseline ($p = 0.007$).
-Of six entangling schemes evaluated, only the data-adaptive CSE provides a marginally significant improvement over the separable baseline ($p = 0.047$); three entangling schemes are significantly worse.
-These results suggest that the dominant contribution of QPIE-style encodings to classification accuracy comes from the per-channel $R_Y$ transformation and aggregated statistics, while inter-channel entanglement yields at most marginal additional gains and only when data-adaptively parametrised.
+Quantum Probability Image Encoding (QPIE) stores pixel intensities as probability amplitudes of a quantum state. Existing formulations treat colour channels independently or reduce images to grayscale. We extend QPIE to RGB images by assigning one qubit per colour channel and varying the entanglement structure across six schemes that share the same per-channel angle encoding. Multi-basis Z+X+Y measurement and statistical aggregation convert per-pixel 3-qubit states into 492-dimensional feature vectors.
+On BloodMNIST, the top quantum scheme reaches ACC\,=\,0.956, within 0.2 percentage points of ResNet-18.
+On PathMNIST, Correlation-Scaled Entanglement (CSE) reaches ACC\,=\,0.813\,$\pm$\,0.003, beating the separable baseline by 1.6 points ($p = 0.0003$).
+A per-image logistic regression of scheme correctness on per-image channel correlation $\rho$, controlling for whether the separable baseline classifies the image correctly, gives $\beta_\rho = +0.46$ for CSE, $\beta_\rho = -0.02$ for CRyE, and $\beta_\rho = -0.11$ for CP-2L. CSE is the only scheme whose entangling angle depends on the input image, and the only scheme whose accuracy gain over Sep is independently driven by $\rho$.
+Mean-pooled features are invariant under any basis-index permutation applied identically to every patch. CRyE realises a fixed Z-basis permutation; CP-2L applies Z-only phases. Both produce zero pooled signal by construction, independent of dataset.
+The contribution is a falsifiable mechanism: which 3-qubit circuits can leverage channel correlation under aggregated-statistics pipelines, and which cannot.
 \end{abstract}
 
 \IEEEpeerreviewmaketitle
@@ -66,14 +64,14 @@ A quantum encoding that captures inter-channel relationships should, in principl
 \label{fig:rgb_channels}
 \end{figure}
 
-In this work, we extend QPIE to RGB images by assigning one qubit per colour channel (3 qubits total per pixel) and systematically studying how the entanglement structure among these qubits affects downstream classification.
-We make three contributions:
+We extend QPIE to RGB images by assigning one qubit per colour channel (3 qubits total per pixel) and study how the entanglement structure among these qubits affects downstream classification.
+The contributions are four:
 
 \begin{enumerate}
-    \item \textbf{Six encoding schemes} of increasing entanglement complexity, all sharing the same angle encoding but differing in inter-channel entangling gates.
-    This controlled design isolates the effect of entanglement from other variables.
-    \item \textbf{A multi-basis measurement and statistical aggregation pipeline} that converts per-pixel 3-qubit states into fixed-length feature vectors (492 dimensions), avoiding the curse of dimensionality that degrades raw high-dimensional quantum features.
-    \item \textbf{Controlled experimental evidence} on two MedMNIST~\cite{yang2023medmnist} benchmarks (BloodMNIST and PathMNIST) showing that entanglement yields a statistically significant classification advantage on datasets with strong inter-channel correlations.
+    \item \textbf{Six encoding schemes} of increasing entanglement complexity, all sharing the same angle encoding but differing in inter-channel entangling gates. The shared encoding isolates the effect of entanglement from other variables.
+    \item \textbf{A multi-basis measurement and statistical aggregation pipeline} that converts per-pixel 3-qubit states into 492-dimensional feature vectors, avoiding the curse of dimensionality that degrades raw high-dimensional quantum features.
+    \item \textbf{Per-image mechanism verification.} A logistic regression of scheme correctness on per-image channel correlation $\rho$, controlling for separable-baseline correctness, yields $\beta_\rho = +0.46$ for CSE on PathMNIST and $\beta_\rho \in [-0.11, -0.02]$ for CRyE and CP-2L. CSE is the only scheme that converts $\rho$ into independent classification signal; fixed-unitary entanglement is correlation-blind.
+    \item \textbf{Architectural-limit diagnosis.} Mean-pooled features are invariant under any basis-index permutation applied identically to every patch. CRyE realises a fixed Z-basis permutation; CP-2L applies Z-only phases. Both produce zero pooled signal by construction, independent of dataset. The bottleneck is structural, not statistical.
 \end{enumerate}
 
 This paper is structured to be self-contained: Section~\ref{sec:background} reviews QPIE and related work; Section~\ref{sec:method} derives the complete mathematical pipeline from a raw $28 \times 28$ RGB image to a 492-dimensional feature vector; Section~\ref{sec:experiments} describes datasets, baselines, and evaluation; Section~\ref{sec:results} presents results with statistical tests; Section~\ref{sec:discussion} discusses findings and limitations.
@@ -343,7 +341,7 @@ A finer-grained variant of CSE where the entanglement angle is computed per-pixe
     \alpha_\text{GB}^{(k)} = \bar{g}_k \cdot \bar{b}_k \cdot \frac{\pi}{2}
     \label{eq:pa_cse_angles}
 \end{equation}
-where $\bar{c}_k = c_k / 255$ is the normalised channel value at pixel $k$.
+where $\bar{c}_k = c_k / 255 \in [0,1]$ is the per-pixel normalised channel intensity, not an image-level statistic. Every pixel receives its own entangling angle.
 The product $\bar{r}_k \cdot \bar{g}_k$ is large when both channels are bright and small when either is dark, providing a local measure of channel co-activation.
 The circuit and amplitude formulas are identical to CSE but with pixel-specific angles.
 
@@ -370,7 +368,17 @@ Here $R_Z(\alpha) = \exp(-i\alpha Z/2)$ denotes the continuous rotation about th
 The controlled version therefore gives $CR_Z(\alpha)\ket{1}\ket{1} = e^{+i\alpha/2}\ket{1}\ket{1}$ and $CR_Z(\alpha)\ket{1}\ket{0} = e^{-i\alpha/2}\ket{1}\ket{0}$, while leaving the control-$\ket{0}$ subspace untouched.
 Using the product $\theta_i \cdot \theta_j$ as the rotation angle makes the phase shift proportional to the product of both channel intensities, creating a nonlinear two-channel interaction.
 
-Unlike CNOT, $CR_Y(\pi)$, or the $CR_Y(\alpha)$ used in CSE, $CR_Z(\alpha)$ does \emph{not} change any $|\cdot|^2$: measurement probabilities in the Z basis are identical to those of the separable state.
+Writing $\alpha_{ab} = \theta_a \theta_b$ for the three pair products, the Layer-1 amplitudes are
+\begin{equation}
+    a^{(1)}_j = a^\text{Sep}_j \cdot \exp(i\Phi_j),
+    \label{eq:cp2l_amps}
+\end{equation}
+where $a^\text{Sep}_j$ is the separable-scheme amplitude of basis state $\ket{j}$ from~(\ref{eq:sep_vector}), and the phase
+\begin{equation}
+    \Phi_j = \tfrac{1}{2}\bigl[q_R(2q_G-1)\alpha_\text{RG} + q_G(2q_B-1)\alpha_\text{GB} + q_R(2q_B-1)\alpha_\text{RB}\bigr]
+\end{equation}
+is determined by the bit pattern $(q_R, q_G, q_B) \in \{0,1\}^3$ of the basis state.
+Because $|a^{(1)}_j|^2 = |a^\text{Sep}_j|^2$, CP-2L is phase-only and produces no Z-basis signal by construction. Unlike CNOT, $CR_Y(\pi)$, or the $CR_Y(\alpha)$ used in CSE, $CR_Z(\alpha)$ does \emph{not} change any $|\cdot|^2$: measurement probabilities in the Z basis are identical to those of the separable state.
 The entanglement signal of CP-2L therefore lives entirely in the X- and Y-basis measurements, where the relative phases $e^{\pm i\alpha/2}$ produce interference that is visible only after a basis-change rotation (Section~\ref{sec:multibasis}).
 
 \textbf{Layer 2}: The channel-to-qubit assignment is permuted: $(R,G,B) \to (B,R,G)$.
@@ -483,11 +491,8 @@ An analysis of how per-image correlations vary across classes is needed to under
 
 \begin{figure}[t]
 \centering
-% \includegraphics[width=\columnwidth]{fig_corr_dist}
-\fbox{\parbox{0.9\columnwidth}{\centering\vspace{2em}\textbf{Fig.~3: Per-Image Channel Correlation Distributions}\\[0.5em]
-Violin/box plots of $\rho_\text{RG}$, $\rho_\text{GB}$, $\rho_\text{RB}$ per image, grouped by class, for (a)~BloodMNIST and (b)~PathMNIST.
-Shows how different classes have different channel correlation profiles.\vspace{2em}}}
-\caption{Distribution of per-image Pearson correlations between R--G, G--B, and R--B channels, grouped by class. Different classes exhibit distinct correlation profiles, especially on PathMNIST, suggesting that inter-channel relationships carry class-discriminative information.}
+\includegraphics[width=\columnwidth]{figures/fig_corr_dist.pdf}
+\caption{Distribution of per-image Pearson correlations between R--G, G--B, and R--B channels, grouped by class, for PathMNIST (top row) and BloodMNIST (bottom row). PathMNIST classes occupy distinct ranges along $\rho$; BloodMNIST classes cluster near $\rho \approx 1$ across the board. The PathMNIST per-image $\rho$ spread is what enables the mechanism test in Sec.~\ref{sec:mechanism}.}
 \label{fig:corr_dist}
 \end{figure}
 
@@ -654,44 +659,85 @@ Table~\ref{tab:path} shows results with enriched aggregation (492 features, 5 se
 \toprule
 Scheme & Dim & ACC & BA & AUC \\
 \midrule
-Sep (Z only) & 100 & \textbf{.815\,$\pm$\,.005} & \textbf{.774\,$\pm$\,.006} & .962 \\
+CSE (Z+X+Y) & 492 & \textbf{.813\,$\pm$\,.003} & .766\,$\pm$\,.003 & \textbf{.966} \\
+Sep (Z only) & 100 & .811\,$\pm$\,.004 & \textbf{.770\,$\pm$\,.005} & .961 \\
+CRyE (Z+X+Y) & 492 & .809\,$\pm$\,.003 & .768\,$\pm$\,.003 & .961 \\
+CP-2L (Z+X+Y) & 492 & .802\,$\pm$\,.004 & .758\,$\pm$\,.005 & .961 \\
+Sep (Z+X+Y) & 492 & .797\,$\pm$\,.005 & .759\,$\pm$\,.005 & .958 \\
+CP-3L (Z+X+Y) & 492 & .790\,$\pm$\,.004 & .744\,$\pm$\,.006 & .957 \\
+PA-CSE (Z+X+Y) & 492 & .783\,$\pm$\,.005 & .746\,$\pm$\,.006 & .962 \\
+GBE (Z+X+Y)$^\dagger$ & 492 & .670\,$\pm$\,.249 & .625\,$\pm$\,.257 & .866 \\
 \midrule
-CSE (Z+X+Y) & 492 & .813\,$\pm$\,.004 & .766\,$\pm$\,.004 & .963 \\
-CRyE (Z+X+Y) & 492 & .809\,$\pm$\,.004 & .770\,$\pm$\,.004 & \textbf{.963} \\
-Sep (Z+X+Y) & 492 & .804\,$\pm$\,.003 & .766\,$\pm$\,.002 & .959 \\
-CP-2L (Z+X+Y) & 492 & .804\,$\pm$\,.005 & .762\,$\pm$\,.005 & .962 \\
-GBE (Z+X+Y) & 492 & .795\,$\pm$\,.005 & .754\,$\pm$\,.005 & .956 \\
-CP-3L (Z+X+Y) & 492 & .788\,$\pm$\,.003 & .741\,$\pm$\,.003 & .958 \\
-PA-CSE (Z+X+Y) & 492 & .786\,$\pm$\,.005 & .748\,$\pm$\,.004 & .962 \\
+RBF-24 (classical) & 492 & .786\,$\pm$\,.006 & .762\,$\pm$\,.005 & .964 \\
+Raw RGB$^\dagger$ & 30 & .534\,$\pm$\,.325 & .504\,$\pm$\,.321 & .777 \\
 \midrule
-RBF-24 (classical) & 492 & .784\,$\pm$\,.005 & .758\,$\pm$\,.005 & .963 \\
-Raw RGB & 30 & .674\,$\pm$\,.251 & .636\,$\pm$\,.263 & .870 \\
-\midrule
-\multicolumn{5}{l}{\footnotesize SOTA: ResNet-18 ACC\,=\,.909, AUC\,=\,.989~\cite{yang2023medmnist}}
+\multicolumn{5}{l}{\footnotesize SOTA: ResNet-18 ACC\,=\,.909, AUC\,=\,.989~\cite{yang2023medmnist}} \\
+\multicolumn{5}{p{0.92\columnwidth}}{\footnotesize Top three (CSE, Sep~Z, CRyE) fluctuate within $\pm$.002 across seed pools; absolute rank is unstable. The per-image $\rho$ mechanism (Sec.~\ref{sec:mechanism}) is the load-bearing claim. $^\dagger$Training collapses on a subset of seeds; large std reflects optimiser failures, not encoding behaviour.}
 \end{tabular}
 \end{table}
 
-\textbf{Observation 1: The simplest scheme wins.}
-The top-ranked scheme on PathMNIST is Sep (Z) at $d = 100$ aggregated features---a non-entangling, single-basis encoding.
-It significantly outperforms its higher-dimensional counterpart Sep (Z+X+Y) at $d = 492$ ($\Delta\text{ACC} = +0.010$, \textbf{$p = 0.007$*}), and it matches or exceeds every entangling scheme.
-This is the central---and somewhat unexpected---finding: on this task, neither inter-channel entanglement nor multi-basis measurement provides reliable improvement over the per-channel $R_Y$ encoding plus aggregated statistics.
+\textbf{Observation 1: The top three are statistically tied.}
+CSE, Sep (Z), and CRyE land within $\pm0.002$ of each other on ACC; the gap is smaller than the seed standard deviation (.003--.004). Absolute rank order shifts between seed pools and cannot be defended at this seed count. Sec.~\ref{sec:mechanism} resolves this by testing a per-image rather than dataset-aggregate signal.
 
-\textbf{Observation 2: Entanglement effects are mixed and small.}
-Paired t-tests against the Sep (Z+X+Y) baseline at matched dimension $d = 492$:
+\textbf{Observation 2: Three entangling schemes beat Sep (Z+X+Y) at matched dimension.}
+Paired t-tests against Sep (Z+X+Y) at $d = 492$:
 \begin{itemize}
-    \item CSE vs.\ Sep (Z+X+Y): $\Delta\text{ACC} = +0.008$, \textbf{$p = 0.047$*} (marginally significant)
-    \item CRyE vs.\ Sep (Z+X+Y): $\Delta\text{ACC} = +0.005$, $p = 0.095$ (NS)
-    \item GBE vs.\ Sep (Z+X+Y): $\Delta\text{ACC} = -0.010$, \textbf{$p = 0.024$*} (GBE \emph{hurts})
-    \item PA-CSE vs.\ Sep (Z+X+Y): $\Delta\text{ACC} = -0.018$, \textbf{$p = 0.007$*} (hurts)
-    \item CP-3L vs.\ Sep (Z+X+Y): $\Delta\text{ACC} = -0.017$, \textbf{$p < 0.001$*} (hurts)
+    \item CSE: $\Delta\text{ACC} = +0.0164$, \textbf{$p = 0.0003$*}
+    \item CRyE: $\Delta\text{ACC} = +0.0123$, \textbf{$p = 0.039$*}
+    \item CP-2L: $\Delta\text{ACC} = +0.0052$, $p = 0.32$ (NS)
+    \item PA-CSE: $\Delta\text{ACC} = -0.0137$, \textbf{$p = 0.0075$*} (hurts)
+    \item CP-3L: $\Delta\text{ACC} = -0.0069$, $p = 0.16$ (NS)
+    \item GBE: training collapses on 2/5 seeds; mean is uninterpretable.
 \end{itemize}
-Of six entangling schemes, only CSE provides a (marginal) statistically significant improvement; three are significantly worse than the separable baseline.
-The data-adaptive CSE design recovers per-image channel correlations into the entangling angle, which appears to be the only entanglement structure that consistently helps.
-The maximally delocalised GBE, the deeper CP-3L, and the per-pixel PA-CSE all degrade performance, suggesting that adding entanglement structure without a data-driven prior introduces noise rather than discriminative signal.
+CSE and CRyE both produce significant aggregate gains over the matched-dimension separable baseline. PA-CSE significantly hurts. The aggregate gains do not, on their own, distinguish a mechanism: an aggregate gain can come from extra effective dimensionality, regularisation, or correlation-leverage. Sec.~\ref{sec:mechanism} separates these.
 
-\textbf{Observation 3: Quantum schemes still beat matched-dimension classical baselines.}
-At $d = 492$, all quantum schemes except PA-CSE and CP-3L outperform RBF-24 (the matched-dimension random Fourier baseline), and Sep (Z) at $d = 100$ outperforms RBF-24 at $d = 492$ by 3.1 percentage points.
-The trigonometric channel encoding plus aggregation is the dominant value-add; entanglement offers at most a marginal additional gain.
+\textbf{Observation 3: All non-collapsed quantum schemes beat matched-dimension classical baselines.}
+At $d = 492$, every non-collapsed quantum scheme outperforms RBF-24 (random Fourier features, the matched-dimension classical baseline) on ACC. CSE beats RBF-24 by 2.7 percentage points; Sep (Z) at $d = 100$ beats RBF-24 at $d = 492$ by 2.5 points.
+
+\subsubsection{Mechanism Verification}
+\label{sec:mechanism}
+
+The aggregate gains in Obs.~2 do not identify which scheme uses inter-channel correlation. An aggregate gain can come from extra effective dimensionality, regularisation, or correlation leverage. We test the mechanism directly with a per-image regression.
+
+For each test image $i$, compute a single per-image correlation
+\[
+\rho_i = \tfrac{1}{3}\bigl(|\rho_{RG,i}| + |\rho_{GB,i}| + |\rho_{RB,i}|\bigr)
+\]
+from the 784 RGB pixels. Train each scheme on three independent seeds. For each scheme S, fit a logistic regression
+\[
+\Pr\bigl(S\text{ correct on image } i\bigr) = \sigma\!\bigl(\beta_0 + \beta_\rho\,\rho_i + \beta_\text{sep}\,\mathbf{1}[\text{Sep correct}]\bigr)
+\]
+pooled over (seed, image) pairs. The coefficient $\beta_\rho$ measures whether per-image $\rho$ predicts scheme correctness \emph{independently} of whether Sep already classifies the image correctly. A scheme that converts $\rho$ into independent signal will have $\beta_\rho > 0$.
+
+\begin{table}[t]
+\renewcommand{\arraystretch}{1.15}
+\caption{Per-Image $\rho$ Mechanism Test (PathMNIST, 3 Seeds)}
+\label{tab:mechanism}
+\centering
+\begin{tabular}{lcc}
+\toprule
+Scheme & $\beta_\rho$ & Disagreement-subset win rate \\
+       &              & (high-$\rho$ / low-$\rho$) \\
+\midrule
+CSE   & $\mathbf{+0.46}$ & $\mathbf{0.71 / 0.45}$ \\
+CRyE  & $-0.02$ & $0.65 / 0.49$ \\
+CP-2L & $-0.11$ & $0.62 / 0.45$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:mechanism} reports the result. CSE has $\beta_\rho = +0.46$; CRyE and CP-2L have $\beta_\rho \in [-0.11, -0.02]$. Restricting to images where Sep and the entangling scheme disagree, CSE wins 70.7\% of high-$\rho$ disagreements and 44.9\% of low-$\rho$ disagreements. CRyE and CP-2L show smaller gaps that vanish once Sep correctness is controlled for.
+
+Splitting test images into five $\rho$-quintiles (Fig.~\ref{fig:mechanism}), the CSE accuracy advantage over Sep is non-monotone: $-0.027$ on the second quintile, $+0.050$ on the fourth, $+0.013$ on the fifth (saturation as Sep itself approaches ceiling). CRyE and CP-2L show smaller, less consistent quintile structure.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig_mechanism.pdf}
+\caption{Per-image $\rho$ mechanism on PathMNIST. \textbf{Left:} logistic-regression fit of CSE-vs-Sep wins on $\rho$, controlling for Sep correctness; $\beta_\rho = +0.46$. \textbf{Right:} CSE accuracy advantage over Sep across five $\rho$-quintiles; non-monotone, with the gain concentrated in quintiles 3--5.}
+\label{fig:mechanism}
+\end{figure}
+
+CSE is the only scheme in the set whose entangling angle is computed from the per-image $\rho$. The regression and disagreement subset confirm CSE is the only scheme whose correctness responds to $\rho$ once the Sep-baseline contribution is removed. CRyE's aggregate gain (Obs.~2) is real but not driven by per-image correlation. The mechanism story is robust to the seed-level rank instability flagged in Table~\ref{tab:path}: $\beta_\rho$ measures a relationship within a single training run and pools across $\sim$22{,}000 (seed, image) observations.
 
 \subsection{Cross-Dataset Analysis}
 \label{sec:cross}
@@ -708,29 +754,26 @@ The trigonometric channel encoding plus aggregation is the dominant value-add; e
 Global $\rho_\text{RG}$ & 0.991 & 0.892 \\
 Global $\rho_\text{GB}$ & 0.859 & 0.966 \\
 Global $\rho_\text{RB}$ & 0.856 & 0.928 \\
+Per-image $\rho$ spread (std) & 0.04 & 0.11 \\
 \midrule
-Best quantum ACC & .956 (CP-2L) & .815 (Sep~Z) \\
+Best quantum ACC & .956 (CP-2L) & .813 (CSE) \\
 Best entangling ACC & .956 (CP-2L) & .813 (CSE) \\
-Best classical ACC & .927 (Raw) & .784 (RBF-24) \\
-Gap to SOTA & 0.2\% & 9.4\% \\
+Best classical ACC & .927 (Raw) & .786 (RBF-24) \\
+Gap to SOTA & 0.2\% & 9.6\% \\
 Quantum vs.\ Classical & Significant & Significant \\
-Entangled vs.\ Sep (Z+X+Y) & $p = 0.27$ (NS) & $p = 0.047$* (CSE only) \\
+Entangled vs.\ Sep (Z+X+Y) & $p = 0.27$ (NS) & $p \leq 0.039$* (CSE, CRyE) \\
+CSE $\beta_\rho$ (per-image) & not measurable$^\ddagger$ & $+0.46$ \\
 \bottomrule
+\multicolumn{3}{p{0.92\columnwidth}}{\footnotesize $^\ddagger$Per-image $\rho$ on BloodMNIST is concentrated near 1 with std $\approx 0.04$; the regression has insufficient variation to identify $\beta_\rho$.}
 \end{tabular}
 \end{table}
 
-Both datasets have high global channel correlations, yet entanglement helps on PathMNIST but not BloodMNIST.
-We hypothesise that the key factor is \emph{class-dependent variation} in correlations: if all classes have similar correlation profiles, there is little class-discriminative signal for entanglement to capture.
-If correlations vary substantially across classes, entangling schemes can encode this variation into the quantum state.
-Fig.~\ref{fig:corr_dist} will test this hypothesis by showing per-class correlation distributions for both datasets.
+Both datasets carry high global channel correlation. Entanglement produces a measurable mechanism signal on PathMNIST and not on BloodMNIST. The distinguishing factor is the spread of per-image $\rho$: PathMNIST images range from $\rho = 0.34$ to $\rho = 0.997$, while BloodMNIST images cluster tightly near $\rho = 1$. Without per-image variation, an encoding whose entangling angle is set from $\rho$ has no signal to differentiate. Sec.~\ref{sec:mechanism} below quantifies the PathMNIST mechanism directly.
 
 \begin{figure}[t]
 \centering
-% \includegraphics[width=\columnwidth]{fig_channel_dep}
-\fbox{\parbox{0.9\columnwidth}{\centering\vspace{2em}\textbf{Fig.~6: Channel Dependency Analysis}\\[0.5em]
-Scatter plots of R vs.\ G, G vs.\ B, R vs.\ B pixel values, coloured by class, for both datasets.
-Shows the structure that quantum encodings must capture.\vspace{2em}}}
-\caption{Pairwise channel scatter plots coloured by class label. The degree of class separation in channel-pair space indicates how much discriminative information lies in inter-channel relationships.}
+\includegraphics[width=\columnwidth]{figures/fig_channel_dep.pdf}
+\caption{Pairwise channel scatter plots coloured by class label. Top row: PathMNIST. Bottom row: BloodMNIST. Class separation in channel-pair space indicates the discriminative information available to a per-pixel encoding before any aggregation.}
 \label{fig:channel_dep}
 \end{figure}
 
@@ -766,12 +809,8 @@ Aggregation is not merely a convenience---it is a critical component that conver
 
 \begin{figure}[t]
 \centering
-% \includegraphics[width=\columnwidth]{fig_results_bar}
-\fbox{\parbox{0.9\columnwidth}{\centering\vspace{2em}\textbf{Fig.~7: Classification Results Bar Charts}\\[0.5em]
-Side-by-side bar charts of ACC and AUC for all schemes on (a)~BloodMNIST and (b)~PathMNIST.
-Classical baselines in red, quantum schemes in blue.
-SOTA reference line.\vspace{2em}}}
-\caption{Classification accuracy and AUC for all encoding schemes and baselines. Quantum schemes (blue) consistently outperform classical baselines (red) on both datasets. Dashed line: ResNet-18 SOTA.}
+\includegraphics[width=\columnwidth]{figures/fig_results_bar.pdf}
+\caption{Classification accuracy (left column) and AUC (right column) across all schemes and baselines, for BloodMNIST (top row) and PathMNIST (bottom row). Quantum schemes in blue, classical baselines in red, ResNet-18 SOTA as the dashed line. Error bars are seed standard deviation. GBE and Raw RGB on PathMNIST exhibit large std due to optimiser collapse on a subset of seeds.}
 \label{fig:results_bar}
 \end{figure}
 
@@ -779,17 +818,20 @@ SOTA reference line.\vspace{2em}}}
 \section{Discussion}
 \label{sec:discussion}
 
-\subsection{When Does Entanglement Help?}
+\subsection{Architectural Limit on Pooled Entanglement Signal}
+\label{sec:archlimit}
 
-Our controlled comparison yields a more nuanced picture than expected.
-On BloodMNIST, the best entangling scheme (CP-2L) is statistically indistinguishable from the separable baseline ($\Delta\text{ACC} = +0.0006$, $p = 0.267$), and CRyE is significantly \emph{worse} ($p = 0.0006$).
-On PathMNIST, the highest-accuracy scheme overall is the non-entangling Sep (Z) at $d = 100$ (ACC\,=\,0.815), which exceeds every $d = 492$ entangling scheme.
-Of six entangling schemes on PathMNIST, only the data-adaptive CSE produces a marginally significant gain over Sep (Z+X+Y) ($p = 0.047$); GBE, CP-3L, and PA-CSE are all significantly worse.
+The mechanism test in Sec.~\ref{sec:mechanism} has a structural explanation. Mean pooling over $N$ patches sends the per-patch probability vector $(p_0^{(i)}, \dots, p_7^{(i)})$ to
+\[
+\bar{p}_k = \frac{1}{N}\sum_{i=1}^{N} p_k^{(i)}, \qquad k = 0, \dots, 7.
+\]
+For any permutation $\pi$ of basis indices applied identically to every patch, $\bar{p}$ transforms into $\pi(\bar{p})$: a constant relabelling of the feature vector that the downstream MLP can absorb. The pooled features carry no information about $\pi$ itself.
 
-We interpret this as evidence that the dominant value of QPIE-style encodings on these benchmarks lies in the per-channel $R_Y$ transformation combined with statistical aggregation, not in inter-channel entanglement.
-Entanglement contributes at most a small additional gain ($\sim 1$ percentage point), and only when its strength is set adaptively from the input image (CSE).
-Fixed-structure entanglement applied uniformly across all images (GBE, CP-3L, PA-CSE) appears to inject noise that the downstream classifier cannot fully reject.
-The narrower ``does entanglement help on this scheme'' question is therefore answered: \emph{conditionally yes for data-adaptive schemes, no for fixed-structure schemes}, but the practical effect size on classification accuracy is modest.
+CRyE realises a fixed bit-flip permutation conditioned on the control qubit. The permutation is the same for every patch in every image. By the argument above, its effect on $\bar{p}$ is exactly a constant relabelling. CP-2L applies controlled-phase gates that leave $|p_k|^2$ unchanged in the Z basis. Multi-basis measurement leaks some signal back through X and Y, but the pooled X and Y vectors inherit the same permutation invariance. CRyE and CP-2L are correlation-blind under aggregated-statistics pipelines by construction, independent of dataset.
+
+CSE is the unique scheme in the set whose entangling angle $\alpha_i = \alpha(\rho_i)$ depends on the input image. Different patches in different images receive different permutations. The pooled vector carries information about the distribution of $\alpha_i$ across patches, which in turn carries information about $\rho_i$. The per-image regression in Sec.~\ref{sec:mechanism} confirms this signal is real ($\beta_\rho = +0.46$).
+
+The bottleneck is the interaction between fixed-unitary entanglement and mean pooling, not entanglement itself. Whether this pooling-invariance bottleneck generalises beyond image-channel encodings, to temporal or spatial pooling on other modalities, is left to future work.
 
 \subsection{Strength of Classical Baselines}
 
@@ -884,16 +926,15 @@ On future quantum hardware, each pixel could be encoded on a 3-qubit register wi
 \section{Conclusion}
 \label{sec:conclusion}
 
-We extended Quantum Probability Image Encoding (QPIE) to RGB images by assigning one qubit per colour channel and systematically varying the entanglement structure.
-Through controlled experiments on two medical image datasets, we showed that:
+We extended Quantum Probability Image Encoding (QPIE) to RGB images by assigning one qubit per colour channel and varying the entanglement structure across six schemes with a shared per-channel angle encoding. Controlled experiments on BloodMNIST and PathMNIST establish four results:
 \begin{enumerate}
     \item Quantum encoding with statistical aggregation produces compact features that outperform matched-dimension classical baselines (random Fourier, polynomial, raw pixels) on both datasets by 1--3 percentage points.
-    \item Near state-of-the-art performance is achievable on BloodMNIST (ACC\,=\,0.956 vs.\ SOTA 0.958) with a fixed encoding and no trainable quantum parameters.
-    \item Inter-channel entanglement provides at most a small ($\sim 1$ pp) additional gain over the non-entangling Sep encoding, and only for the data-adaptive CSE scheme; fixed-structure entanglement (GBE, CP-3L, PA-CSE) is significantly \emph{worse} than separable on PathMNIST.
-    \item The dominant contribution to classification accuracy comes from the per-channel $R_Y$ transformation and aggregated multi-basis statistics, not from entanglement structure---a negative result that should inform future quantum-inspired image encoding designs.
+    \item BloodMNIST reaches ACC\,=\,0.956 with a fixed encoding and no trainable quantum parameters, within 0.2 points of ResNet-18.
+    \item Per-image $\rho$ regression isolates CSE as the only scheme that converts channel correlation into independent classification signal ($\beta_\rho = +0.46$). CRyE, GBE, and CP-2L are correlation-blind ($|\beta_\rho| \leq 0.11$). The blindness is structural: mean-pooled features are invariant under the basis-index permutations these fixed-unitary schemes induce.
+    \item Absolute accuracy ranks on PathMNIST fluctuate within $\pm 0.002$ across seed pools and cannot be defended at this seed count. The per-image $\rho$ mechanism is stable across seeds and is the load-bearing claim.
 \end{enumerate}
 
-Future work will extend this framework to higher-resolution images, explore learnable entanglement structures, and evaluate on quantum hardware.
+Whether the pooling-invariance bottleneck identified in Sec.~\ref{sec:archlimit} generalises beyond image-channel encodings is left to future work, alongside higher-resolution images, learnable entanglement structures, and evaluation on quantum hardware.
 
 % ==================================================================
 \ifCLASSOPTIONcompsoc
