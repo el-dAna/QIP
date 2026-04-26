@@ -1,0 +1,353 @@
+\documentclass[conference,compsoc]{IEEEtran}
+
+\ifCLASSOPTIONcompsoc
+  \usepackage[nocompress]{cite}
+\else
+  \usepackage{cite}
+\fi
+
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{braket}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{multirow}
+\setlist{nosep}
+
+\hyphenation{Physio-Net cross-attention multi-basis}
+
+\newcommand{\TODO}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
+\newcommand{\NUM}[1]{\textcolor{blue}{#1}}
+
+\begin{document}
+
+\title{Quantum Multi-Basis Cross-attention for Single-Lead ECG\\Arrhythmia Classification on PhysioNet 2017}
+
+\author{\IEEEauthorblockN{Sogodam Atadana\IEEEauthorrefmark{1}, Özlem Karabiber Cura\IEEEauthorrefmark{2}}
+\IEEEauthorblockA{%
+\IEEEauthorrefmark{1}İzmir Katip Çelebi University, Biomedical Engineering Department, atadanas@gmail.com\\
+\IEEEauthorrefmark{2}İzmir Katip Çelebi University, Biomedical Engineering Department, ozlem.karabiber@ikcu.edu.tr
+}}
+
+\maketitle
+
+% ==================================================================
+\begin{abstract}
+We adapt a 3-qubit channel-entangled Quantum Probability Image Encoding (QPIE) pipeline, originally developed for RGB medical images, to single-lead electrocardiogram (ECG) arrhythmia classification on the PhysioNet/CinC 2017 AF Challenge.
+The three colour channels are replaced by three signal channels manufactured from the ECG itself: bandpassed amplitude, first difference, and Hilbert envelope of the 8--16\,Hz wavelet detail.
+Six entanglement schemes (Sep, CRyE, GBE, CSE, PA-CSE, CP-2L) encode each $\sim$0.83\,s window into a 3-qubit state. Multi-basis Z+X+Y measurement yields 24 features per window.
+We benchmark two pipelines that already exist in our prior work: aggregated MLP and per-window 1D CNN. We then propose QMBC-Net, a Quantum Multi-Basis Cross-attention Network that operates on the un-aggregated $(W \times 24)$ tensor with cross-basis attention over the (Z, X, Y) groups followed by temporal self-attention over windows.
+On PhysioNet 2017 the best entangling scheme paired with QMBC-Net reaches macro-F1\,=\,\NUM{XX.XX} on the official N/A/O metric, against \NUM{XX.XX} for the MLP-aggregated baseline and \NUM{XX.XX} for the 1D CNN. Cross-basis attention weights localise the windows and bases that drive each prediction, exposing which cardiac cycles and which projection axes the model relies on.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Quantum machine learning, electrocardiogram, atrial fibrillation, multi-basis measurement, cross-attention, PhysioNet 2017, biomedical signal classification.
+\end{IEEEkeywords}
+
+\IEEEpeerreviewmaketitle
+
+% ==================================================================
+\section{Introduction}
+\label{sec:intro}
+
+Atrial fibrillation (AF) is the most common sustained cardiac arrhythmia and a major cause of stroke. Single-lead wearable ECG has made low-cost screening realistic, and the PhysioNet/CinC 2017 AF Challenge~\cite{clifford2017af} put 8528 short single-lead recordings in front of the research community as a public benchmark. Top entries on that challenge sit at macro-F1 around 0.83 over the three clinical classes (Normal, AF, Other), with deeper convolutional and recurrent models pushing this higher on adjacent datasets~\cite{hannun2019cardiologist, andreotti2017comparing}.
+
+Quantum feature extractors are a less explored route. Two questions drive this paper. Does a quantum encoding designed for RGB images transfer to a 1D physiological signal once the three colour channels are replaced by three engineered signal channels? And can a small attention-based head designed around the structure of multi-basis quantum measurements outperform the standard classical heads we have used so far?
+
+We answer both. The encoder family is the six 3-qubit channel-entangled QPIE schemes from our earlier work on MedMNIST. The classical baselines are the same MLP-on-aggregated-features and 1D CNN-on-windows pipelines we have benchmarked before. The new piece is QMBC-Net: a head that splits the 24 multi-basis features per window into three groups of 8 (one per measurement basis), attends across the three basis tokens with a small cross-attention block, then attends across windows with temporal self-attention.
+
+The contributions are three:
+\begin{enumerate}
+    \item \textbf{1D adaptation of channel-entangled QPIE.} A reusable recipe for porting a 3-channel RGB quantum encoder to any 1D biosignal: raw amplitude, first difference, and a band-limited envelope as the three channels.
+    \item \textbf{QMBC-Net architecture.} A cross-basis $\to$ temporal attention head built specifically for multi-basis quantum features. The basis groups are treated as tokens with their own attention scores, exposing which projection axis carried the signal.
+    \item \textbf{Three-tier benchmark on PhysioNet 2017.} Aggregated MLP, per-window 1D CNN, and QMBC-Net evaluated under one protocol against four published baselines, with paired tests across schemes and 5-seed variance reported.
+\end{enumerate}
+
+Section~\ref{sec:background} reviews ECG arrhythmia classification and quantum feature extraction. Section~\ref{sec:method} describes the 1D channel construction, the six encoders, and QMBC-Net. Section~\ref{sec:experiments} states the protocol and baselines. Section~\ref{sec:results} reports macro-F1 across the three pipelines and against published results. Section~\ref{sec:discussion} discusses what the basis-attention weights show.
+
+% ==================================================================
+\section{Background and Related Work}
+\label{sec:background}
+
+\subsection{ECG arrhythmia classification on PhysioNet 2017}
+
+The 2017 AF Challenge released 8528 single-lead ECG recordings sampled at 300\,Hz, 9 to 60 seconds long, labelled Normal (N), AF (A), Other (O), or Noise ($\sim$). The official metric is macro-F1 over N/A/O. Class balance is roughly 60/9/30/3 percent.
+
+The challenge winner (Clifford et al.) used hand-crafted heart-rate variability and morphology features fed into a gradient-boosted tree, reaching macro-F1\,=\,\NUM{0.83}~\cite{clifford2017af}. Hannun et al.\ on a different and larger single-lead dataset reached F1\,=\,\NUM{0.83} averaged across 12 rhythm classes with a 34-layer 1D ResNet~\cite{hannun2019cardiologist}. Andreotti et al.\ compared feature-engineered and CNN entries on the 2017 challenge and reported macro-F1 between 0.79 and 0.83 across CNN configurations~\cite{andreotti2017comparing}. Goodfellow et al.\ trained a multi-scale CNN on 60-second segments~\cite{goodfellow2018towards}.
+
+\subsection{Quantum image and signal encodings}
+
+Quantum image representations include FRQI~\cite{le2011flexible}, NEQR~\cite{zhang2013neqr}, MCQI~\cite{sun2011multi}, and QPIE~\cite{yao2017quantum}. None directly target temporal signals. Adaptations to time series have used amplitude encoding of the signal itself or angle encoding of fixed-window features~\cite{rahman2024quantum, kyriienko2022unsupervised}.
+
+In a companion paper~\cite{atadana2026qpie} we extended QPIE to RGB by assigning one qubit per channel and varying the entangling structure across six schemes. Multi-basis Z+X+Y measurement and statistical aggregation produced a 492-dimensional feature vector that, paired with a small MLP, classified BloodMNIST and PathMNIST within 0.2 and 9.6 accuracy points of ResNet-18 respectively. The present paper reuses those six encoders and the multi-basis pipeline unchanged.
+
+\subsection{Attention over quantum measurements}
+
+Standard transformer heads treat quantum-feature outputs as plain vectors. The (Z, X, Y) basis structure is then thrown away. We are not aware of a prior architecture that attends across measurement bases as named tokens. The closest design is multi-modal cross-attention, which fuses heterogeneous feature streams~\cite{vaswani2017attention}.
+
+% ==================================================================
+\section{Method}
+\label{sec:method}
+
+\subsection{From single-lead ECG to three signal channels}
+
+A recording $x[n]$ is bandpass-filtered to 0.5--40\,Hz, zero-padded or centre-cropped to 30\,s ($N = 9000$ samples at 300\,Hz), and split into windows of 250 samples ($\sim$0.83\,s, one cardiac cycle) with stride 125. This yields $W = 70$ windows per recording.
+
+For each window we form three channels:
+\begin{align}
+    c_1[n] &= x_\text{bp}[n] && \text{(raw bandpassed amplitude)} \\
+    c_2[n] &= x_\text{bp}[n] - x_\text{bp}[n-1] && \text{(first difference)} \\
+    c_3[n] &= |\mathcal{H}\{w_{8\text{--}16}[n]\}| && \text{(envelope of wavelet detail)}
+\end{align}
+where $w_{8\text{--}16}$ is the wavelet detail in the 8--16\,Hz subband and $\mathcal{H}$ is the Hilbert transform. Each channel is robust-scaled per-recording using the q5/q95 mapping from~\cite{atadana2026qpie} into $[0,1]$.
+
+\subsection{Per-window 3-qubit encoding}
+
+We reuse all six encoders from~\cite{atadana2026qpie}: Sep, CRyE, GBE, CSE, PA-CSE, CP-2L. Each takes a 3-channel sample $(\bar{c}_1, \bar{c}_2, \bar{c}_3) \in [0,1]^3$ at one time step inside a window and returns a 3-qubit amplitude vector. Per-channel angle encoding $\theta_c = \pi \bar{c}_c$ is shared. The schemes differ only in which entangling gates act between the channel qubits. We refer the reader to~\cite{atadana2026qpie} Section III for the full circuit definitions.
+
+For a window of 250 samples we apply the chosen scheme at every sample, project the resulting state onto Z, X, and Y bases (24 features per sample), and aggregate over the 250 samples with the same 11-statistic operator from the prior paper. The output is a fixed $24 \cdot \alpha$-dimensional per-window descriptor (where $\alpha$ depends on the aggregator variant), or, for the un-aggregated path, a $(W \times 24)$ tensor per recording.
+
+\subsection{Three classification heads}
+
+\textbf{Phase-1A: aggregated MLP.} Pooled features over all windows give a 492-dimensional recording-level vector. The MLP is the PathMNIST head from~\cite{atadana2026qpie}: $d \to 512 \to 256 \to 128 \to 4$ with BatchNorm, ReLU, Dropout 0.3.
+
+\textbf{Phase-1B: 1D CNN over windows.} Per-window 24-dim features kept as a $(W \times 24)$ sequence. A three-block 1D CNN with dilations $\{1,2,4\}$, AdaptiveAvgPool1d, then a linear classifier. This is the same CNN1D class used on UWave gestures, where it beat the MLP-on-aggregated path by $\sim$4 accuracy points.
+
+\textbf{Phase-2: QMBC-Net.} For each window, the 24 features are split into three basis tokens of 8 dimensions each, embedded to dimension 64, and passed through a single cross-basis multi-head attention layer (4 heads). A learned per-basis gate weights the three tokens before pooling to a single window vector. Sinusoidal positional encoding is added across the $W$ windows. Two layers of temporal self-attention (4 heads) follow, with a CLS token whose output goes through one Linear layer to the 4 classes.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig_qmbc_arch.pdf}
+\caption{QMBC-Net architecture. Per window, multi-basis features split into Z, X, Y tokens; cross-basis attention exchanges information across bases; pooled window tokens then attend across time. Attention weights at both stages are inspectable.}
+\label{fig:qmbc_arch}
+\end{figure}
+
+% ==================================================================
+\section{Experimental Setup}
+\label{sec:experiments}
+
+\subsection{Dataset and split}
+
+PhysioNet/CinC 2017 AF Challenge~\cite{clifford2017af}, downloaded via \texttt{wfdb}. 8528 recordings, 4 classes. Stratified split 60/20/20 across N/A/O/$\sim$. Five seeds.
+
+\subsection{Training}
+
+All three heads share AdamW (lr $5{\times}10^{-4}$, weight decay $10^{-3}$), cosine annealing, label smoothing 0.05, class-balanced sampler, batch 64, 50 epochs, early stopping on val macro-F1 with patience 10. M4 Mac, MPS backend.
+
+\subsection{Metrics and baselines}
+
+Primary metric: macro-F1 over N/A/O (Noise excluded), the official challenge metric. Secondary: per-class F1, AUC, balanced accuracy. Paired $t$-test across the 5 seeds for the best entangling scheme vs Sep within each pipeline.
+
+Published baselines (see Table~\ref{tab:sota}):
+\begin{itemize}
+    \item Clifford 2017~\cite{clifford2017af}: hand features + GBT.
+    \item Hannun 2019~\cite{hannun2019cardiologist}: 34-layer 1D ResNet (different dataset).
+    \item Andreotti 2017~\cite{andreotti2017comparing}: feature vs CNN comparison on the same 2017 challenge.
+    \item Goodfellow 2018~\cite{goodfellow2018towards}: multi-scale CNN on 60-s segments.
+\end{itemize}
+
+% ==================================================================
+\section{Results}
+\label{sec:results}
+
+\subsection{Phase-1A: aggregation + MLP}
+
+Table~\ref{tab:phase1a} reports macro-F1 per scheme over 5 seeds. \TODO{fill from notebook cell 7.} Best scheme: \NUM{XXX}. Sep baseline: \NUM{XXX}. Paired $t$-test best vs Sep: $p = \NUM{XXX}$.
+
+\begin{table}[t]
+\caption{Phase-1A — aggregated MLP, PhysioNet 2017, 5 seeds.}
+\label{tab:phase1a}
+\centering
+\begin{tabular}{lccc}
+\toprule
+Scheme & macro-F1 & AUC & BA \\
+\midrule
+Sep    & \NUM{X.XXX} $\pm$ \NUM{X.XXX} & \NUM{X.XXX} & \NUM{X.XXX} \\
+CRyE   & \NUM{X.XXX} $\pm$ \NUM{X.XXX} & \NUM{X.XXX} & \NUM{X.XXX} \\
+GBE    & \NUM{X.XXX} $\pm$ \NUM{X.XXX} & \NUM{X.XXX} & \NUM{X.XXX} \\
+CSE    & \NUM{X.XXX} $\pm$ \NUM{X.XXX} & \NUM{X.XXX} & \NUM{X.XXX} \\
+PA-CSE & \NUM{X.XXX} $\pm$ \NUM{X.XXX} & \NUM{X.XXX} & \NUM{X.XXX} \\
+CP-2L  & \NUM{X.XXX} $\pm$ \NUM{X.XXX} & \NUM{X.XXX} & \NUM{X.XXX} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Phase-1B: 1D CNN over windows}
+
+Table~\ref{tab:phase1b} reports the same six schemes through the 1D CNN. \TODO{fill from cell 8.} The aggregation step is gone; the CNN sees the full per-window time series. From UWave precedent we expect a $\geq 1$-point macro-F1 improvement on at least one scheme.
+
+\begin{table}[t]
+\caption{Phase-1B — 1D CNN over windows, PhysioNet 2017, 5 seeds.}
+\label{tab:phase1b}
+\centering
+\begin{tabular}{lccc}
+\toprule
+Scheme & macro-F1 & AUC & BA \\
+\midrule
+Sep    & \NUM{X.XXX} $\pm$ \NUM{X.XXX} & \NUM{X.XXX} & \NUM{X.XXX} \\
+CRyE   & \NUM{X.XXX} $\pm$ \NUM{X.XXX} & \NUM{X.XXX} & \NUM{X.XXX} \\
+GBE    & \NUM{X.XXX} $\pm$ \NUM{X.XXX} & \NUM{X.XXX} & \NUM{X.XXX} \\
+CSE    & \NUM{X.XXX} $\pm$ \NUM{X.XXX} & \NUM{X.XXX} & \NUM{X.XXX} \\
+PA-CSE & \NUM{X.XXX} $\pm$ \NUM{X.XXX} & \NUM{X.XXX} & \NUM{X.XXX} \\
+CP-2L  & \NUM{X.XXX} $\pm$ \NUM{X.XXX} & \NUM{X.XXX} & \NUM{X.XXX} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Phase-2: QMBC-Net}
+
+Table~\ref{tab:phase2} reports QMBC-Net. \TODO{fill from cell 9.} If QMBC-Net does not beat the 1D CNN best by at least 1 macro-F1 point, the architectural claim is not supported and Section~\ref{sec:discussion} reflects that.
+
+\begin{table}[t]
+\caption{Phase-2 — QMBC-Net, PhysioNet 2017, 5 seeds.}
+\label{tab:phase2}
+\centering
+\begin{tabular}{lccc}
+\toprule
+Scheme & macro-F1 & AUC & BA \\
+\midrule
+Sep    & \NUM{X.XXX} $\pm$ \NUM{X.XXX} & \NUM{X.XXX} & \NUM{X.XXX} \\
+CRyE   & \NUM{X.XXX} $\pm$ \NUM{X.XXX} & \NUM{X.XXX} & \NUM{X.XXX} \\
+GBE    & \NUM{X.XXX} $\pm$ \NUM{X.XXX} & \NUM{X.XXX} & \NUM{X.XXX} \\
+CSE    & \NUM{X.XXX} $\pm$ \NUM{X.XXX} & \NUM{X.XXX} & \NUM{X.XXX} \\
+PA-CSE & \NUM{X.XXX} $\pm$ \NUM{X.XXX} & \NUM{X.XXX} & \NUM{X.XXX} \\
+CP-2L  & \NUM{X.XXX} $\pm$ \NUM{X.XXX} & \NUM{X.XXX} & \NUM{X.XXX} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Comparison with published baselines}
+
+\begin{table}[t]
+\caption{PhysioNet 2017 macro-F1 (N/A/O) — published baselines and ours.}
+\label{tab:sota}
+\centering
+\begin{tabular}{llc}
+\toprule
+System & Backbone & macro-F1 \\
+\midrule
+Clifford 2017~\cite{clifford2017af}      & GBT + features    & \NUM{0.83} \\
+Andreotti 2017~\cite{andreotti2017comparing} & CNN          & \NUM{0.79--0.83} \\
+Goodfellow 2018~\cite{goodfellow2018towards} & multi-scale CNN & \NUM{0.83} \\
+Hannun 2019~\cite{hannun2019cardiologist}$^\dagger$ & 34-layer 1D ResNet & \NUM{0.83} \\
+\midrule
+Ours, Phase-1A (best scheme) & MLP-agg     & \NUM{X.XX} \\
+Ours, Phase-1B (best scheme) & 1D CNN      & \NUM{X.XX} \\
+Ours, Phase-2 (best scheme)  & QMBC-Net    & \NUM{X.XX} \\
+\bottomrule
+\end{tabular}\\[2pt]
+\footnotesize $^\dagger$ Different dataset (12 rhythm classes, single-lead). Reported for context.
+\end{table}
+
+\subsection{Cross-basis attention as a window-level explanation}
+
+Figure~\ref{fig:attention} overlays the QMBC-Net temporal attention on a sample AF and a sample Normal recording. \TODO{notebook cell 11 saves this.} The basis-gate weights for the same recordings are reported in the figure caption. They show which of (Z, X, Y) the model relied on per recording.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig_attention.pdf}
+\caption{QMBC-Net attention overlays. Top: a Normal recording. Bottom: an AF recording. Heatmap intensity: temporal attention weight per window. Caption to include per-basis gate values once generated.}
+\label{fig:attention}
+\end{figure}
+
+% ==================================================================
+\section{Discussion}
+\label{sec:discussion}
+
+\TODO{Fill once Phase-1 and Phase-2 numbers land. Anchor on three points:
+(1) does the 1D channel manufacturing recipe transfer the encoder family to ECG without breaking it;
+(2) which encoder schemes win on temporal data and how does that compare with MedMNIST;
+(3) does QMBC-Net beat the 1D CNN, and if yes, do the basis attention weights expose anything physiologically plausible.}
+
+\subsection{Limitations}
+
+\TODO{To be written. Candidate items:
+single-lead only; PhysioNet 2017 is 4-class with imbalance; simulation, no quantum hardware; window length fixed at 250 samples; no patient-stratified split (recording-level only).}
+
+% ==================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+
+\TODO{One paragraph summarising the three contributions with the final macro-F1 numbers.}
+
+% ==================================================================
+\ifCLASSOPTIONcompsoc
+  \section*{Acknowledgments}
+\else
+  \section*{Acknowledgment}
+\fi
+
+% The authors would like to thank...
+
+% ==================================================================
+\begin{thebibliography}{99}
+
+\bibitem{clifford2017af}
+G.~D.~Clifford, C.~Liu, B.~Moody, L.-W.~H.~Lehman, I.~Silva, Q.~Li, A.~E.~Johnson, and R.~G.~Mark,
+``{AF} classification from a short single lead {ECG} recording: The {PhysioNet}/Computing in Cardiology Challenge 2017,''
+in \emph{Proc. Computing in Cardiology}, vol.~44, 2017, pp.~1--4.\\
+\url{https://physionet.org/content/challenge-2017/1.0.0/}
+
+\bibitem{hannun2019cardiologist}
+A.~Y.~Hannun, P.~Rajpurkar, M.~Haghpanahi, G.~H.~Tison, C.~Bourn, M.~P.~Turakhia, and A.~Y.~Ng,
+``Cardiologist-level arrhythmia detection and classification in ambulatory electrocardiograms using a deep neural network,''
+\emph{Nature Medicine}, vol.~25, no.~1, pp.~65--69, 2019.\\
+\url{https://www.nature.com/articles/s41591-018-0268-3}
+
+\bibitem{andreotti2017comparing}
+F.~Andreotti, O.~Carr, M.~A.~F.~Pimentel, A.~Mahdi, and M.~De~Vos,
+``Comparing feature-based classifiers and convolutional neural networks to detect arrhythmia from short segments of {ECG},''
+in \emph{Proc. Computing in Cardiology}, vol.~44, 2017, pp.~1--4.\\
+\url{https://ieeexplore.ieee.org/document/8331807}
+
+\bibitem{goodfellow2018towards}
+S.~D.~Goodfellow, A.~Goodwin, R.~Greer, P.~C.~Laussen, M.~Mazwi, and D.~Eytan,
+``Towards understanding {ECG} rhythm classification using convolutional neural networks and attention mappings,''
+in \emph{Proc. Mach. Learn. Healthcare}, 2018.\\
+\url{https://arxiv.org/abs/1810.04121}
+
+\bibitem{atadana2026qpie}
+S.~Atadana and Ö.~Karabiber Cura,
+``When does entanglement help in quantum image encoding? A per-image mechanism test on {MedMNIST},''
+in \emph{Proc. IEEE Int. Conf. Quantum Comput. Eng. (QCE)}, 2026, to appear.
+
+\bibitem{yao2017quantum}
+X.-W.~Yao, H.~Wang, Z.~Liao, M.-C.~Chen \emph{et al.},
+``Quantum image processing and its application to edge detection: Theory and experiment,''
+\emph{Phys. Rev. X}, vol.~7, p.~031041, 2017.
+
+\bibitem{le2011flexible}
+P.~Q.~Le, F.~Dong, and K.~Hirota,
+``A flexible representation of quantum images for polynomial preparation, image compression, and processing operations,''
+\emph{Quantum Inf. Process.}, vol.~10, no.~1, pp.~63--84, 2011.
+
+\bibitem{zhang2013neqr}
+Y.~Zhang, K.~Lu, Y.~Gao, and M.~Wang,
+``{NEQR}: A novel enhanced quantum representation of digital images,''
+\emph{Quantum Inf. Process.}, vol.~12, no.~8, pp.~2833--2860, 2013.
+
+\bibitem{sun2011multi}
+B.~Sun, A.~M.~Iliyasu, F.~Yan, F.~Dong, and K.~Hirota,
+``Multi-channel representation for images on quantum computers using the {RGB}$\alpha$ color space,''
+in \emph{Proc. IEEE 7th Int. Symp. Intell. Signal Process.}, 2011, pp.~1--6.
+
+\bibitem{rahman2024quantum}
+M.~Rahman \emph{et al.},
+``Quantum machine learning for time series classification: A survey,''
+\emph{arXiv preprint arXiv:2402.XXXXX}, 2024.
+\TODO{verify exact arxiv id before submission}
+
+\bibitem{kyriienko2022unsupervised}
+O.~Kyriienko, A.~E.~Paine, and V.~E.~Elfving,
+``Protocols for trainable and differentiable quantum generative modelling,''
+\emph{Phys. Rev. Research}, vol.~4, p.~043067, 2022.
+
+\bibitem{vaswani2017attention}
+A.~Vaswani \emph{et al.},
+``Attention is all you need,''
+in \emph{Adv. Neural Inf. Process. Syst.}, vol.~30, 2017.
+
+\end{thebibliography}
+
+\end{document}
