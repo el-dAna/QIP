@@ -149,11 +149,13 @@ The pipeline processes each pixel independently through four stages (Fig.~\ref{f
 \end{enumerate}
 The 492-dimensional vector is then classified by a standard neural network.
 
+
 \begin{figure}[t]
 \centering
-% \includegraphics[width=\columnwidth]{fig_pipeline}
-\fbox{\parbox{0.9\columnwidth}{\centering\vspace{2em}\textbf{Fig.~1: QPIE-RGB Pipeline Overview}\\[0.5em]
-$28{\times}28{\times}3$ image $\to$ per-pixel 3-qubit encoding $\to$ multi-basis measurement (Z,X,Y) $\to$ $784{\times}24$ feature matrix $\to$ statistical aggregation $\to$ 492-dim vector $\to$ MLP classifier\vspace{2em}}}
+\includegraphics[width=\columnwidth]{figures/qpie_Pipeline_Overview.jpeg}
+% \fbox{\parbox{0.9\columnwidth}
+% {\centering\vspace{2em}\textbf{Fig.~1: QPIE-RGB Pipeline Overview}\\[0.5em]
+% $28{\times}28{\times}3$ image $\to$ per-pixel 3-qubit encoding $\to$ multi-basis measurement (Z,X,Y) $\to$ $784{\times}24$ feature matrix $\to$ statistical aggregation $\to$ 492-dim vector $\to$ MLP classifier\vspace{2em}}}
 \caption{Complete QPIE-RGB pipeline. Each of the 784 pixels is independently encoded into a 3-qubit state, measured in three bases to produce 24 probability features, then all per-pixel features are aggregated into a single 492-dimensional vector per image.}
 \label{fig:pipeline}
 \end{figure}
@@ -212,16 +214,16 @@ All encodings share this starting point.
 We define six encoding schemes that differ only in the entangling operations applied after the $R_Y$ encoding of~(\ref{eq:psi0}).
 The first scheme applies no entanglement; the remaining five apply entangling gates of increasing complexity.
 
-\begin{figure}[t]
-\centering
-% \includegraphics[width=\columnwidth]{fig_circuits}
-\fbox{\parbox{0.9\columnwidth}{\centering\vspace{2em}\textbf{Fig.~2: Quantum Circuit Diagrams}\\[0.5em]
-Six circuits for (a)~Sep, (b)~CRyE, (c)~GBE, (d)~CSE, (e)~PA-CSE, (f)~CP-2L.
-All begin with $R_Y(\theta_R)$, $R_Y(\theta_G)$, $R_Y(\theta_B)$ on qubits 0, 1, 2 respectively.
-Schemes (b)--(f) add entangling gates after encoding.\vspace{2em}}}
-\caption{Circuit diagrams for all six encoding schemes. Qubit 0 encodes the Red channel, qubit 1 encodes Green, qubit 2 encodes Blue.}
-\label{fig:circuits}
-\end{figure}
+% \begin{figure}[t]
+% \centering
+% % \includegraphics[width=\columnwidth]{fig_circuits}
+% \fbox{\parbox{0.9\columnwidth}{\centering\vspace{2em}\textbf{Fig.~2: Quantum Circuit Diagrams}\\[0.5em]
+% Six circuits for (a)~Sep, (b)~CRyE, (c)~GBE, (d)~CSE, (e)~PA-CSE, (f)~CP-2L.
+% All begin with $R_Y(\theta_R)$, $R_Y(\theta_G)$, $R_Y(\theta_B)$ on qubits 0, 1, 2 respectively.
+% Schemes (b)--(f) add entangling gates after encoding.\vspace{2em}}}
+% \caption{Circuit diagrams for all six encoding schemes. Qubit 0 encodes the Red channel, qubit 1 encodes Green, qubit 2 encodes Blue.}
+% \label{fig:circuits}
+% \end{figure}
 
 \subsubsection{Sep (Separable --- No Entanglement)}
 \label{sec:sep}
@@ -535,17 +537,17 @@ RBF-24 is the most direct classical analogue to the quantum encoding: both apply
 \textbf{4.\ ResNet-18}: The published MedMNIST state-of-the-art~\cite{yang2023medmnist}, a deep convolutional network trained end-to-end on $28 \times 28$ images.
 This is not a fair comparison (ResNet-18 has $\sim$11M trainable parameters vs.\ our fixed encoding + small MLP), but establishes an upper bound on what is achievable on these datasets.
 
-\begin{figure}[t]
-\centering
-% \includegraphics[width=\columnwidth]{fig_recon}
-\fbox{\parbox{0.9\columnwidth}{\centering\vspace{2em}\textbf{Fig.~5: Original vs.\ Reconstructed Images}\\[0.5em]
-(a)~Original $28{\times}28$ RGB image.
-(b)~Reconstructed from Z-basis measurement probabilities: each pixel's RGB is recovered from $p(\ket{1})$ per channel qubit.
-(c)~Residual (difference) image.
-Shows the encoding is near-lossless for the separable scheme.\vspace{2em}}}
-\caption{A sample image from each dataset, alongside its reconstruction from the Z-basis measurement probabilities of the separable (Sep) encoding. The reconstruction confirms that the angle encoding preserves the visual content.}
-\label{fig:recon}
-\end{figure}
+% \begin{figure}[t]
+% \centering
+% % \includegraphics[width=\columnwidth]{fig_recon}
+% \fbox{\parbox{0.9\columnwidth}{\centering\vspace{2em}\textbf{Fig.~5: Original vs.\ Reconstructed Images}\\[0.5em]
+% (a)~Original $28{\times}28$ RGB image.
+% (b)~Reconstructed from Z-basis measurement probabilities: each pixel's RGB is recovered from $p(\ket{1})$ per channel qubit.
+% (c)~Residual (difference) image.
+% Shows the encoding is near-lossless for the separable scheme.\vspace{2em}}}
+% \caption{A sample image from each dataset, alongside its reconstruction from the Z-basis measurement probabilities of the separable (Sep) encoding. The reconstruction confirms that the angle encoding preserves the visual content.}
+% \label{fig:recon}
+% \end{figure}
 
 \subsection{Evaluation Protocol}
 \label{sec:eval}
