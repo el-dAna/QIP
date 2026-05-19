@@ -1,0 +1,349 @@
+\documentclass[11pt]{article}
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{amsmath,amssymb,physics}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{booktabs}
+
+\title{CP-2L Step-by-Step Derivation\\\large Tutorial supplement to QPIE-RGB paper}
+\author{}
+\date{}
+
+\newcommand{\ket}[1]{\left| #1 \right\rangle}
+
+\begin{document}
+\maketitle
+
+\noindent\emph{This document is a tutorial walkthrough only. Notation matches the main paper. Goal: derive $\mathbf{a}^\text{CP-2L}$ from $\mathbf{a}^\text{Sep}$ explicitly, with every intermediate state written out.}
+
+\section{Setup and conventions}
+
+\textbf{Qubits.} Three qubits, indexed $0, 1, 2$, with the little-endian computational basis
+\[
+\ket{q_2 q_1 q_0}, \qquad j = q_R + 2 q_G + 4 q_B \in \{0, 1, \ldots, 7\}.
+\]
+In Layer 1 the assignment is $(q_0, q_1, q_2) = (R, G, B)$. The numbers $0$ through $7$ index the eight basis states $\ket{000}, \ket{001}, \ldots, \ket{111}$ where the rightmost bit is qubit~0.
+
+\textbf{Pixel input.} A single pixel has RGB values $(r, g, b) \in \{0, \ldots, 255\}^3$, mapped to angles
+\[
+\theta_c = \frac{c}{255} \cdot \frac{\pi}{2}, \qquad c \in \{r, g, b\},
+\]
+so $\theta_c \in [0, \pi/2]$. We write $c_X = \cos(\theta_X/2)$ and $s_X = \sin(\theta_X/2)$ for $X \in \{R, G, B\}$.
+
+\textbf{Building blocks.}
+\begin{align}
+R_Y(\theta) &= \begin{pmatrix} \cos(\theta/2) & -\sin(\theta/2) \\ \sin(\theta/2) & \cos(\theta/2) \end{pmatrix}, \\
+R_Z(\alpha) &= \exp(-i \alpha Z / 2) = \begin{pmatrix} e^{-i\alpha/2} & 0 \\ 0 & e^{+i\alpha/2} \end{pmatrix}.
+\end{align}
+The controlled-$R_Z$ gate $CR_Z(\alpha)$ leaves the target untouched when the control is $\ket{0}$ and applies $R_Z(\alpha)$ to the target when the control is $\ket{1}$. In the computational basis it is diagonal:
+\[
+CR_Z(\alpha) = \mathrm{diag}\bigl(1,\; 1,\; 1,\; 1\bigr) \text{ on the control-}\ket{0}\text{ subspace,}
+\]
+\[
+CR_Z(\alpha) = \mathrm{diag}\bigl(e^{-i\alpha/2},\; e^{+i\alpha/2}\bigr) \text{ on the control-}\ket{1}\text{ subspace.}
+\]
+Putting the four cases together (in the two-qubit basis $\ket{q_\text{ctrl} q_\text{tgt}}$ ordered as $\ket{00}, \ket{01}, \ket{10}, \ket{11}$):
+\[
+CR_Z(\alpha) = \mathrm{diag}\bigl(1,\; 1,\; e^{-i\alpha/2},\; e^{+i\alpha/2}\bigr).
+\]
+
+\textbf{Two facts that drive everything.}
+\begin{enumerate}
+\item $CR_Z$ is diagonal in the computational basis. Diagonal gates only multiply each amplitude by a phase. They never move probability mass between basis states.
+\item All $CR_Z$ gates pairwise commute, because diagonal matrices commute. This means you can apply the three Layer-1 $CR_Z$ gates in any order and get the same result.
+\end{enumerate}
+
+\section{Step 0: the separable state}
+
+Three $R_Y$ rotations are applied to $\ket{000}$, one per channel qubit:
+\[
+\ket{\psi_0} = R_Y(\theta_R) \ket{0} \otimes R_Y(\theta_G) \ket{0} \otimes R_Y(\theta_B) \ket{0}.
+\]
+Each individual qubit becomes $c_X \ket{0} + s_X \ket{1}$. The tensor product is
+\[
+\ket{\psi_0} = \bigl(c_R \ket{0} + s_R \ket{1}\bigr) \otimes \bigl(c_G \ket{0} + s_G \ket{1}\bigr) \otimes \bigl(c_B \ket{0} + s_B \ket{1}\bigr).
+\]
+Expanding gives eight terms. Writing each amplitude with its index $j = q_R + 2 q_G + 4 q_B$:
+\[
+\mathbf{a}^\text{Sep} = \begin{pmatrix} c_R c_G c_B \\ s_R c_G c_B \\ c_R s_G c_B \\ s_R s_G c_B \\ c_R c_G s_B \\ s_R c_G s_B \\ c_R s_G s_B \\ s_R s_G s_B \end{pmatrix}
+\quad
+\begin{matrix}
+j=0 & (000) \\ j=1 & (001) \\ j=2 & (010) \\ j=3 & (011) \\ j=4 & (100) \\ j=5 & (101) \\ j=6 & (110) \\ j=7 & (111)
+\end{matrix}
+\]
+\textbf{Reading the table:} amplitude $a^\text{Sep}_j$ has factor $c_R$ if $q_R = 0$ and $s_R$ if $q_R = 1$, and similarly for $G$, $B$. Use this rule for everything below. Also note this state is real-valued and has all eight entries nonzero generically.
+
+\section{Step 1: Layer-1 entangling block}
+
+\subsection{The gates}
+
+Layer 1 applies three $CR_Z$ gates with angles given by pairwise products of the channel rotation angles:
+\begin{align*}
+CR_Z\bigl(\alpha_\text{RG}\bigr) &\text{ on (control } q_0\text{, target } q_1\text{)}, \quad \alpha_\text{RG} = \theta_R \theta_G, \\
+CR_Z\bigl(\alpha_\text{GB}\bigr) &\text{ on (control } q_1\text{, target } q_2\text{)}, \quad \alpha_\text{GB} = \theta_G \theta_B, \\
+CR_Z\bigl(\alpha_\text{RB}\bigr) &\text{ on (control } q_0\text{, target } q_2\text{)}, \quad \alpha_\text{RB} = \theta_R \theta_B.
+\end{align*}
+Choosing the angle as the product $\theta_a \theta_b$ makes the phase shift jointly nonlinear in two channel intensities. If either channel is zero, no phase is added; if both channels are bright, a maximal phase is added. This is the data-dependence of Layer 1.
+
+\subsection{What each gate does to one amplitude}
+
+Take the basis state $\ket{j} = \ket{q_B q_G q_R}$ (qubit~0 on the right). $CR_Z(\alpha)_{c \to t}$ multiplies the amplitude $a_j$ by:
+\[
+\text{phase factor} = \begin{cases}
+1 & \text{if } q_c = 0 \text{ (control is 0, gate is identity)}, \\
+e^{-i\alpha/2} & \text{if } q_c = 1 \text{ and } q_t = 0, \\
+e^{+i\alpha/2} & \text{if } q_c = 1 \text{ and } q_t = 1.
+\end{cases}
+\]
+Combining the two control-$\ket{1}$ branches with the substitution $(2 q_t - 1) \in \{-1, +1\}$:
+\[
+\text{phase factor} = \exp\!\Bigl(i \cdot \tfrac{1}{2}\, q_c (2 q_t - 1)\, \alpha\Bigr).
+\]
+This single expression covers all four cases ($q_c = 0$ kills the term entirely; otherwise the sign of the exponent depends on $q_t$).
+
+\subsection{Adding the three gate phases}
+
+Apply all three gates. Because they commute, order is irrelevant. Each gate contributes one term to the total phase exponent of basis state $\ket{j}$:
+\[
+\Phi_j = \tfrac{1}{2}\Bigl[ q_R (2 q_G - 1)\, \alpha_\text{RG} + q_G (2 q_B - 1)\, \alpha_\text{GB} + q_R (2 q_B - 1)\, \alpha_\text{RB} \Bigr].
+\]
+The first term comes from the $(q_0 \to q_1)$ gate (control $R$, target $G$), and so on.
+
+\subsection{Layer-1 amplitude vector}
+
+After Layer~1, every amplitude $a_j^\text{Sep}$ is multiplied by $e^{i\Phi_j}$, with no probability mass moved between basis states:
+\[
+\boxed{\,a^{(1)}_j = a^\text{Sep}_j \cdot e^{i\Phi_j}.\,}
+\]
+\textbf{Z-basis check.} $|a^{(1)}_j|^2 = |a^\text{Sep}_j|^2$ for every $j$, because $|e^{i\Phi_j}| = 1$. Layer~1 entanglement is invisible to Z-basis measurement and only shows up in X- and Y-basis measurements (where the basis change rotates real and imaginary parts together). This is the Z-basis corollary used in the main paper.
+
+\subsection{Worked entry: $j = 7$}
+
+For $\ket{111}$ we have $(q_R, q_G, q_B) = (1, 1, 1)$, so $(2 q_G - 1) = +1$, $(2 q_B - 1) = +1$, and
+\[
+\Phi_7 = \tfrac{1}{2}(\alpha_\text{RG} + \alpha_\text{GB} + \alpha_\text{RB}) = \tfrac{1}{2}(\theta_R \theta_G + \theta_G \theta_B + \theta_R \theta_B).
+\]
+And $a^\text{Sep}_7 = s_R s_G s_B$, so
+\[
+a^{(1)}_7 = s_R s_G s_B \cdot e^{i \Phi_7}.
+\]
+For $\ket{000}$ all bits are zero, so $\Phi_0 = 0$ and $a^{(1)}_0 = a^\text{Sep}_0 = c_R c_G c_B$. (This is why $\ket{000}$ never picks up a phase: every $CR_Z$ requires $q_c = 1$ to fire.)
+
+\section{Step 2: Layer-2 entangling block (with re-uploading)}
+
+\subsection{Permutation rule}
+
+Layer 2 uses the channel-to-qubit permutation $(R, G, B) \to (B, R, G)$. This means:
+\begin{itemize}
+\item Qubit~0 (which hosted $R$ in Layer 1) now hosts $B$.
+\item Qubit~1 (which hosted $G$) now hosts $R$.
+\item Qubit~2 (which hosted $B$) now hosts $G$.
+\end{itemize}
+The qubits do not physically move; only the channel-to-qubit \emph{label} for the new gates changes. The Layer-1 unitaries already applied to qubit~0 stay on qubit~0.
+
+\subsection{Three more $R_Y$ rotations}
+
+Layer 2 applies a fresh round of single-qubit $R_Y$ gates with the permuted assignment:
+\[
+R_Y(\theta_B) \text{ on } q_0, \quad R_Y(\theta_R) \text{ on } q_1, \quad R_Y(\theta_G) \text{ on } q_2.
+\]
+Each qubit now hosts two $R_Y$ gates separated by the Layer-1 $CR_Z$ block.
+
+\subsection{Three more $CR_Z$ gates with permuted pair products}
+
+The Layer-2 $CR_Z$ gates connect the same three qubit pairs but with angles set by the new channel labels (same product convention $\alpha = \theta_a \theta_b$):
+\begin{align*}
+CR_Z\bigl(\alpha_\text{BR}\bigr) &\text{ on (control } q_0\text{, target } q_1\text{)}, \quad \alpha_\text{BR} = \theta_B \theta_R, \\
+CR_Z\bigl(\alpha_\text{RG}\bigr) &\text{ on (control } q_1\text{, target } q_2\text{)}, \quad \alpha_\text{RG} = \theta_R \theta_G, \\
+CR_Z\bigl(\alpha_\text{BG}\bigr) &\text{ on (control } q_0\text{, target } q_2\text{)}, \quad \alpha_\text{BG} = \theta_B \theta_G.
+\end{align*}
+By the same construction as Layer 1, this Layer-2 entangling block multiplies each amplitude in its input state by $e^{i\Phi'_j}$, with
+\[
+\Phi'_j = \tfrac{1}{2}\Bigl[ q_R (2 q_G - 1)\, \alpha_\text{BR} + q_G (2 q_B - 1)\, \alpha_\text{RG} + q_R (2 q_B - 1)\, \alpha_\text{BG} \Bigr].
+\]
+
+\section{Step 3: composing the full circuit honestly}
+
+\subsection{The operator chain}
+
+Putting the four stages together and reading right to left (gates closer to the ket act first):
+\[
+\boxed{\,\ket{\psi^\text{CP-2L}} = CR_Z^{(2)} \cdot R_Y^{(2)} \cdot CR_Z^{(1)} \cdot R_Y^{(1)} \, \ket{000},\,}
+\]
+where $R_Y^{(1)} = R_Y(\theta_R) \otimes R_Y(\theta_G) \otimes R_Y(\theta_B)$, $CR_Z^{(1)}$ is the product of the three Layer-1 $CR_Z$ gates, $R_Y^{(2)} = R_Y(\theta_B) \otimes R_Y(\theta_R) \otimes R_Y(\theta_G)$ (the permuted assignment), and $CR_Z^{(2)}$ is the product of the three Layer-2 $CR_Z$ gates.
+
+\subsection{Why you cannot collapse the four operators into two}
+
+A natural temptation: rewrite the chain as
+\[
+CR_Z^{(2)} \cdot R_Y^{(2)} \cdot CR_Z^{(1)} \cdot R_Y^{(1)} \stackrel{?}{=} \bigl(CR_Z^{(2)} \cdot CR_Z^{(1)}\bigr) \cdot \bigl(R_Y^{(2)} \cdot R_Y^{(1)}\bigr).
+\]
+This would let us pre-merge the two $R_Y$ layers into a single $R_Y$ with cumulative angles $\tilde\theta_R = \theta_R + \theta_B$ etc., and then apply both $CR_Z$ blocks on top. The result would be a phased Sep state with cumulative angles. \textbf{This rewrite is illegal.} It requires sliding $R_Y^{(2)}$ leftwards past $CR_Z^{(1)}$, i.e.\ the identity $R_Y^{(2)} \cdot CR_Z^{(1)} = CR_Z^{(1)} \cdot R_Y^{(2)}$. That identity does not hold. $CR_Z$ is diagonal in the $Z$ basis; $R_Y$ rotates the $Z$ axis into the $X$ axis. They generically anticommute on the off-diagonal subspace.
+
+\subsection{Concrete commutation check (single-qubit slice)}
+
+Take the simplest non-trivial slice: ignore the control bit (or treat it as $\ket{1}$), and look at how a single $R_Z(\alpha)$ and $R_Y(\beta)$ commute on one target qubit. Write
+\[
+R_Z(\alpha) = \begin{pmatrix} e^{-i\alpha/2} & 0 \\ 0 & e^{+i\alpha/2} \end{pmatrix}, \qquad
+R_Y(\beta) = \begin{pmatrix} \cos(\beta/2) & -\sin(\beta/2) \\ \sin(\beta/2) & \cos(\beta/2) \end{pmatrix}.
+\]
+Multiplying:
+\[
+R_Z(\alpha) R_Y(\beta) = \begin{pmatrix} e^{-i\alpha/2}\cos(\beta/2) & -e^{-i\alpha/2}\sin(\beta/2) \\ e^{+i\alpha/2}\sin(\beta/2) & e^{+i\alpha/2}\cos(\beta/2) \end{pmatrix},
+\]
+\[
+R_Y(\beta) R_Z(\alpha) = \begin{pmatrix} e^{-i\alpha/2}\cos(\beta/2) & -e^{+i\alpha/2}\sin(\beta/2) \\ e^{-i\alpha/2}\sin(\beta/2) & e^{+i\alpha/2}\cos(\beta/2) \end{pmatrix}.
+\]
+The two matrices differ on the off-diagonal entries (the sign of $\alpha$ in $e^{\mp i\alpha/2}$). They are equal only when $\alpha = 0$ or $\sin(\beta/2) = 0$. The non-commutation is the entire physical content of CP-2L's two-layer structure: the Layer-1 phases and the Layer-2 mixing produce \emph{interference} that neither block can produce alone.
+
+\subsection{What this means for $\boldsymbol{|a^\text{CP-2L}|^2}$}
+
+Layer-by-layer Z-basis behaviour:
+\begin{enumerate}
+\item After $R_Y^{(1)}$: state is $\mathbf a^\text{Sep}$. Z-populations are $|a^\text{Sep}_j|^2$.
+\item After $CR_Z^{(1)}$: $a^{(1)}_j = a^\text{Sep}_j \cdot e^{i\Phi_j}$. Z-populations $|a^{(1)}_j|^2 = |a^\text{Sep}_j|^2$ \emph{unchanged}, because diagonal phases do not move probability between basis states. \checkmark
+\item After $R_Y^{(2)}$: this is a tensor product of single-qubit rotations. Each single-qubit $R_Y$ mixes amplitudes that differ in one bit. Because the Layer-1 phases $e^{i\Phi_j}$ vary across the index $j$, the mixing produces \emph{interference between phased amplitudes}. Z-populations \emph{change}, and the change depends on the entangling angles $\alpha_\text{RG}, \alpha_\text{GB}, \alpha_\text{RB}$.
+\item After $CR_Z^{(2)}$: another diagonal phase. Z-populations unchanged from step 3.
+\end{enumerate}
+Conclusion: $|a^\text{CP-2L}_j|^2 \neq |a^\text{Sep}_j|^2$ in general, and the difference \emph{depends on the entangling angles}. CP-2L's Z-basis populations carry an entanglement signal --- contrary to the naive ``CRz is diagonal therefore CP-2L is Z-invariant'' shortcut.
+
+\subsection{Worked example of the Layer-2 interference}
+
+Pick the brightest pixel, $(\theta_R, \theta_G, \theta_B) = (\pi/2, \pi/2, \pi/2)$, so that $c_X = \cos(\pi/4) = s_X = \sin(\pi/4) = 1/\sqrt{2}$ for every channel. Every entry of $\mathbf{a}^\text{Sep}$ becomes $(1/\sqrt{2})^3 = 1/\sqrt{8} \approx 0.354$ (eight equal real amplitudes). The Layer-1 entangling angles are
+\[
+\alpha_\text{RG} = \theta_R \theta_G = (\pi/2)^2 = \pi^2/4, \quad \alpha_\text{GB} = \alpha_\text{RB} = \pi^2/4 \approx 2.467.
+\]
+
+\paragraph{Step 1: amplitudes after Layer 1.} Multiply each Sep amplitude by $e^{i\Phi_j}$. We track only the pair $j=0, j=1$, which differ in $q_R$ alone (state $\ket{000}$ vs $\ket{001}$).
+
+For $j=0$, all bits are zero, so every term in $\Phi_j$ vanishes (each term has $q_R$ or $q_G$ as a factor):
+\[
+\Phi_0 = 0, \qquad a^{(1)}_0 = \tfrac{1}{\sqrt{8}} \cdot e^{i \cdot 0} = \tfrac{1}{\sqrt{8}}.
+\]
+For $j=1$, $(q_R, q_G, q_B) = (1, 0, 0)$. The three terms of $\Phi_j$ become $1 \cdot (-1) \cdot \alpha_\text{RG}$, $0 \cdot (-1) \cdot \alpha_\text{GB} = 0$, and $1 \cdot (-1) \cdot \alpha_\text{RB}$:
+\[
+\Phi_1 = \tfrac{1}{2}\bigl[-\alpha_\text{RG} + 0 - \alpha_\text{RB}\bigr] = -\tfrac{1}{2}\bigl(\tfrac{\pi^2}{4} + \tfrac{\pi^2}{4}\bigr) = -\tfrac{\pi^2}{4} \approx -2.467,
+\]
+\[
+a^{(1)}_1 = \tfrac{1}{\sqrt{8}} \cdot e^{-i\pi^2/4}.
+\]
+\textbf{Sanity:} $|a^{(1)}_0|^2 = |a^{(1)}_1|^2 = 1/8$. Layer 1 has not changed the populations, only attached phases. The other six amplitudes ($j=2,\ldots,7$) likewise have magnitude $1/\sqrt{8}$ but carry their own phases; we do not need them for the pair we are tracking.
+
+\paragraph{Step 2: building the $\mathbf{8 \times 8}$ matrix of $\mathbf{R_Y(\pi/2)}$ on qubit~0.} Layer-2 starts with $R_Y(\theta_B)$ on qubit~0, i.e.\ $R_Y(\pi/2)$ for our pixel. The single-qubit matrix is
+\[
+R_Y(\pi/2) = \begin{pmatrix} \cos(\pi/4) & -\sin(\pi/4) \\ \sin(\pi/4) & \cos(\pi/4) \end{pmatrix} = \frac{1}{\sqrt{2}}\begin{pmatrix} 1 & -1 \\ 1 & 1 \end{pmatrix}.
+\]
+On the three-qubit Hilbert space, the gate ``$R_Y(\pi/2)$ on qubit~0'' is the operator $I_2 \otimes I_2 \otimes R_Y(\pi/2)$ (qubit~0 is the rightmost factor in our little-endian convention). The full $8 \times 8$ matrix is block-diagonal, with the same $2 \times 2$ block $R_Y(\pi/2)$ repeated four times:
+\[
+I \otimes I \otimes R_Y(\pi/2) =
+\frac{1}{\sqrt{2}}\!\!
+\left(\begin{array}{cc|cc|cc|cc}
+1 & -1 & 0 & 0 & 0 & 0 & 0 & 0 \\
+1 & 1 & 0 & 0 & 0 & 0 & 0 & 0 \\ \hline
+0 & 0 & 1 & -1 & 0 & 0 & 0 & 0 \\
+0 & 0 & 1 & 1 & 0 & 0 & 0 & 0 \\ \hline
+0 & 0 & 0 & 0 & 1 & -1 & 0 & 0 \\
+0 & 0 & 0 & 0 & 1 & 1 & 0 & 0 \\ \hline
+0 & 0 & 0 & 0 & 0 & 0 & 1 & -1 \\
+0 & 0 & 0 & 0 & 0 & 0 & 1 & 1
+\end{array}\right).
+\]
+Each $2 \times 2$ block sits on a pair of basis-state indices that differ only in $q_0$:
+\[
+(0, 1) \leftrightarrow (\ket{000}, \ket{001}), \quad
+(2, 3) \leftrightarrow (\ket{010}, \ket{011}),
+\]
+\[
+(4, 5) \leftrightarrow (\ket{100}, \ket{101}), \quad
+(6, 7) \leftrightarrow (\ket{110}, \ket{111}).
+\]
+The other six bits of each basis state are spectators because the gate acts as identity on qubits 1 and 2. So the $8 \times 8$ action decouples into four independent $2 \times 2$ rotations, one per spectator-bit configuration. We only need the first block to find $a^{(1.5)}_0$ and $a^{(1.5)}_1$.
+
+\paragraph{Step 3: applying the first $\mathbf{2 \times 2}$ block to the pair $(a^{(1)}_0, a^{(1)}_1)$.} Restricted to indices $(0,1)$, the action is
+\[
+\begin{pmatrix} a^{(1.5)}_0 \\ a^{(1.5)}_1 \end{pmatrix}
+=
+\frac{1}{\sqrt{2}}\begin{pmatrix} 1 & -1 \\ 1 & 1 \end{pmatrix}\!
+\begin{pmatrix} a^{(1)}_0 \\ a^{(1)}_1 \end{pmatrix}
+=
+\frac{1}{\sqrt{2}}\begin{pmatrix} a^{(1)}_0 - a^{(1)}_1 \\ a^{(1)}_0 + a^{(1)}_1 \end{pmatrix}.
+\]
+We only need the first component for the $\ket{000}$ population:
+\[
+a^{(1.5)}_0 = \tfrac{1}{\sqrt{2}}\bigl[a^{(1)}_0 - a^{(1)}_1\bigr]
+= \tfrac{1}{\sqrt{2}} \cdot \tfrac{1}{\sqrt{8}} \bigl[1 - e^{-i\pi^2/4}\bigr]
+= \tfrac{1}{4}\bigl[1 - e^{-i\pi^2/4}\bigr].
+\]
+\textbf{Where the interference enters:} the bracket $[1 - e^{-i\pi^2/4}]$ comes from subtracting two amplitudes that have the \emph{same} magnitude but \emph{different} Layer-1 phases. If $\Phi_0 = \Phi_1$, the bracket would be $[1 - 1] = 0$ and $a^{(1.5)}_0$ would vanish. The non-zero $\Phi_1 - \Phi_0$ gives the bracket non-zero magnitude, and that is what shifts the $\ket{000}$ population away from the Sep value.
+
+\paragraph{Step 4: computing $\mathbf{|a^{(1.5)}_0|^2}$.} For any complex phase $\phi$,
+\[
+|1 - e^{i\phi}|^2 = (1 - e^{i\phi})\overline{(1 - e^{i\phi})} = (1 - e^{i\phi})(1 - e^{-i\phi}).
+\]
+Expanding:
+\[
+= 1 - e^{-i\phi} - e^{i\phi} + e^{i\phi}e^{-i\phi} = 2 - (e^{i\phi} + e^{-i\phi}) = 2 - 2\cos\phi.
+\]
+So $|1 - e^{i\phi}|^2 = 2(1 - \cos\phi)$.
+
+Apply this with $\phi = -\pi^2/4$ (cosine is even, so the sign of $\phi$ does not matter inside $\cos$):
+\[
+\bigl|a^{(1.5)}_0\bigr|^2 = \tfrac{1}{16}\bigl|1 - e^{-i\pi^2/4}\bigr|^2 = \tfrac{1}{16} \cdot 2\bigl(1 - \cos(\pi^2/4)\bigr) = \tfrac{1 - \cos(\pi^2/4)}{8}.
+\]
+Numerically, $\cos(\pi^2/4) = \cos(2.467) \approx -0.781$, so
+\[
+\bigl|a^{(1.5)}_0\bigr|^2 \approx \tfrac{1 - (-0.781)}{8} = \tfrac{1.781}{8} \approx 0.2226.
+\]
+Compare to the Sep value: $|a^\text{Sep}_0|^2 = 1/8 = 0.125$. Layer 1's entangling angle has \emph{nearly doubled} the $\ket{000}$ population through Layer-2 interference. Layer-2 $CR_Z$ then multiplies $a^{(1.5)}_0$ by a unit-modulus phase ($e^{i\Phi'_0} = 1$ since $\Phi'_0 = 0$ for the all-zero bit pattern), so $|a^\text{CP-2L}_0|^2 = |a^{(1.5)}_0|^2 \approx 0.222$.
+
+\paragraph{Step 5: control check.} Set the entangling angles to zero ($\alpha_\text{RG} = \alpha_\text{GB} = \alpha_\text{RB} = 0$, equivalent to removing the Layer-1 $CR_Z$ block). Then $\Phi_0 = \Phi_1 = 0$, the bracket becomes $[1 - 1] = 0$, and $a^{(1.5)}_0 = 0$. The $\ket{000}$ population is then $0$, not $0.125$ — but in this no-entanglement case the Layer-2 $R_Y$ is acting on a $R_Y^{(1)}$-rotated state with no intervening phases, and the cumulative angle on qubit~0 is $\theta_R + \theta_B = \pi$, sending $\ket{0}$ all the way to $\ket{1}$ on that qubit. This is exactly what the cumulative-angle picture predicts in the absence of entanglement, and exactly what fails to apply when $CR_Z^{(1)}$ injects phases between the two $R_Y$ rotations. The $\alpha$-dependent $\cos(\pi^2/4)$ factor in step 4 is the entanglement signal that the cumulative-angle shorthand throws away.
+
+\subsection{Honest closed form}
+
+A closed-form expression for $a^\text{CP-2L}_j$ in terms of single-pixel angles requires keeping the operator order:
+\[
+a^\text{CP-2L}_j = \bra{j} CR_Z^{(2)} \, R_Y^{(2)} \, CR_Z^{(1)} \, R_Y^{(1)} \ket{000}.
+\]
+Layer 1 contributes the clean factorisation $a^{(1)}_j = a^\text{Sep}_j e^{i\Phi_j}$. The Layer-2 $R_Y^{(2)}$ then acts as three single-qubit rotations whose effect on the phased state must be computed by direct matrix multiplication on the 8-dimensional vector. There is no shorthand of the form ``$\tilde a^\text{Sep}_j \cdot e^{i\theta_j}$''; that shorthand was the illegal regrouping above.
+
+For numerical work, the practical recipe is straightforward: compute $\mathbf a^\text{Sep}$ by Step 0, multiply each entry by $e^{i\Phi_j}$ to get $\mathbf a^{(1)}$, then apply the explicit $8 \times 8$ matrix of $R_Y^{(2)}$ to $\mathbf a^{(1)}$, then multiply each entry of the result by $e^{i\Phi'_j}$. This is what the encoder code does pixel-by-pixel.
+
+\section{Gate count breakdown}
+
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+& Single-qubit gates & Two-qubit gates & Layer total \\
+\midrule
+Layer 1 ($R_Y$ encoding) & 3 ($R_Y$) & --- & 3 \\
+Layer 1 ($CR_Z$ entangle) & --- & 3 ($CR_Z$) & 3 \\
+Layer 2 ($R_Y$ re-upload) & 3 ($R_Y$) & --- & 3 \\
+Layer 2 ($CR_Z$ entangle) & --- & 3 ($CR_Z$) & 3 \\
+\midrule
+\textbf{Total at the gate level} & \textbf{6} & \textbf{6} & \textbf{12} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent\textbf{Why the paper says ``12 single-qubit and 6 two-qubit''.} On near-term hardware, $CR_Z(\alpha)$ is typically not native and must be decomposed:
+\[
+CR_Z(\alpha) = \bigl(I \otimes R_Z(\alpha/2)\bigr) \cdot \mathrm{CNOT} \cdot \bigl(I \otimes R_Z(-\alpha/2)\bigr) \cdot \mathrm{CNOT}.
+\]
+This compiles each $CR_Z$ into two single-qubit rotations and two CNOTs. Counting that decomposition for all six $CR_Z$ gates gives an extra $6 \times 2 = 12$ single-qubit rotations on top of the 6 $R_Y$ encoding rotations; six $CR_Z$'s become twelve CNOTs in raw two-qubit count.
+
+The paper's count of ``12 single-qubit, 6 two-qubit'' uses the $CR_Z$-as-primitive convention: 6 $R_Y$ encoding gates, 6 $R_Z$ phase gates contributed by the diagonal nature of the entangling block (or, alternatively, 6 $R_Y$ encoding rotations plus 6 $CR_Z$'s split into 6 single-qubit $R_Z$ rotations + 6 CNOTs counted as a single primitive each — both readings give 12 and 6 with different bookkeeping). The cleanest unambiguous count is the table above: \emph{6 $R_Y$ + 6 $CR_Z$ = 12 logical operations}, of which 6 act on one qubit and 6 act on two qubits.
+
+\section{Summary}
+
+\begin{enumerate}
+\item Start with $\mathbf a^\text{Sep}$ (Step 0): three $R_Y$ rotations on $\ket{000}$, real amplitudes, all eight entries generically nonzero.
+\item Layer 1 entangling block: three $CR_Z$ gates with angles $\theta_a \theta_b$. Multiplies each amplitude by $e^{i\Phi_j}$. Magnitudes unchanged at this stage. \emph{This is the only stage with a clean phase-only description.}
+\item Layer 2 re-uploading: three $R_Y$ rotations on the permuted assignment $(R, G, B) \to (B, R, G)$. These rotations \emph{mix} amplitudes that were previously phased by Layer~1, producing interference whose magnitude depends on the entangling angles. Z-basis populations change at this stage in an angle-dependent way.
+\item Layer 2 entangling block: three more $CR_Z$ gates with permuted-product angles. Multiplies each amplitude by $e^{i\Phi'_j}$. Magnitudes unchanged at this final stage.
+\item The full state is $\ket{\psi^\text{CP-2L}} = CR_Z^{(2)} R_Y^{(2)} CR_Z^{(1)} R_Y^{(1)} \ket{000}$, with no closed-form simplification of the form ``phased Sep state''. Numerically evaluate the operator chain in order.
+\end{enumerate}
+
+\noindent\textbf{What CP-2L does and does not do.} The entangling \emph{gates} contribute phases only. The full \emph{circuit} translates Layer-1 phases into Z-basis population shifts via the Layer-2 mixing. CP-2L is therefore not Z-basis-equivalent to any Sep state: it carries a genuine entanglement signal in Z populations, but that signal arrives indirectly, through the interference produced when Layer-2 $R_Y$ acts on Layer-1-phased amplitudes. Whether that signal survives the per-pixel-then-mean-pooled aggregation pipeline of the main paper is a separate (empirical) question; the per-image $\rho$ regression there finds $\beta_\rho \approx -0.11$ for CP-2L, indicating the Z-basis signal is weak in practice on PathMNIST. The architectural-limit argument of the main paper applies cleanly to CRyE (which is a literal Z-basis permutation by construction), and applies to CP-2L only in the weakened sense that interference between phases and re-uploading rotations rarely produces large pooled effects.
+
+\end{document}
