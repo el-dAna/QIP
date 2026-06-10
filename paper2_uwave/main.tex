@@ -1,0 +1,904 @@
+\documentclass[conference,compsoc]{IEEEtran}
+
+\ifCLASSOPTIONcompsoc
+  \usepackage[nocompress]{cite}
+\else
+  \usepackage{cite}
+\fi
+
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{braket}
+\usepackage{xcolor}
+\usepackage{multirow}
+\usepackage{siunitx}
+
+\hyphenation{multi-variate time-series cross-scheme}
+
+\newcommand{\TODO}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
+
+\begin{document}
+
+\title{Quantum Probability Image Encoding for Multivariate\\
+Time-Series Classification: Regime Diagnostics\\
+Across Five UEA Benchmarks}
+
+\author{%
+\IEEEauthorblockN{Sogodam Atadana\IEEEauthorrefmark{1},
+                  Özlem Karabiber Cura\IEEEauthorrefmark{2}}
+\IEEEauthorblockA{%
+\IEEEauthorrefmark{1}İzmir Katip Çelebi University,
+Biomedical Engineering Department,
+atadanas@gmail.com\\
+\IEEEauthorrefmark{2}İzmir Katip Çelebi University,
+Biomedical Engineering Department,
+ozlem.karabiber@ikcu.edu.tr}}
+
+\maketitle
+
+% ==================================================================
+\begin{abstract}
+Quantum Probability Image Encoding (QPIE) was developed for spatial
+multi-channel data such as RGB medical images. We test whether it
+transfers without modification to multivariate time-series
+classification (MTSC): each fixed-stride temporal patch is treated as
+a pixel, the three accelerometer or pen-force channels replace the
+three colour channels, and the five 3-qubit encoding schemes (Sep,
+CRyE, GBE, CP-2L, CSE) and multi-basis Z$+$X$+$Y measurement pipeline
+are reused unchanged.
+Across five 3-channel UEA benchmarks --- the complete 3-dimensional
+UEA subset --- the central result is negative.
+On the four datasets where the encoding is functional, no entangling
+scheme beats the separable baseline (Sep) at $p < 0.05$, and the
+data-conditional scheme (CSE) falls significantly below Sep. The
+image-domain channel-correlation mechanism that makes CSE useful on
+RGB data does not operate on temporal sensor signals, whose
+inter-channel correlations are sensor-physical rather than
+class-conditional.
+The pooled-to-CNN accuracy gap splits the datasets into regimes:
+below 5 points where per-patch statistics carry the label
+(Epilepsy, CharacterTrajectories), and 26--38 points where temporal
+ordering does (UWaveGestureLibrary, Handwriting). On
+EthanolConcentration both rungs collapse to near-random, a third
+regime in which patch subsampling of the 1751-step series discards the
+discriminative spectral detail.
+On absolute accuracy QPIE is competitive in data-scarce settings but
+reaches no new state of the art. It trails InceptionTime by 5.6 points
+on the native UWave split and LITEMVTime by 2.9 points on
+Epilepsy~\cite{ismail2025lite}; on Handwriting it exceeds every
+deep-learning baseline in the LITE survey yet stays below the
+strongest convolutional classifiers~\cite{ruiz2020bakeoff}.
+Multivariate ROCKET run on the raw 3-channel series (same splits)
+matches or beats QPIE on every benchmark except CharacterTrajectories.
+With 896 training samples --- the same gesture instances stacked as
+three channels (the \textit{UWaveGestureLibraryAll} benchmark) --- the
+separable CNN ensemble reaches 97.5\%, within a point of multivariate
+ROCKET on the raw 3-channel stack (98.4\%)~\cite{dempster2020rocket}.
+\end{abstract}
+
+\begin{IEEEkeywords}
+quantum machine learning, time-series classification, QPIE,
+multivariate UEA benchmarks, regime diagnostics, entanglement schemes.
+\end{IEEEkeywords}
+
+\IEEEpeerreviewmaketitle
+
+% ==================================================================
+\section{Introduction}
+\label{sec:intro}
+
+Multivariate time-series classification (MTSC) is central to
+biomedical sensing: seizure detection from multi-lead EEG, gesture
+recognition from wrist-worn inertial measurement units, and
+handwriting analysis from pen-digitiser recordings all reduce to
+labelling fixed-length windows of multi-channel signals.
+The UEA archive~\cite{bagnall2018uea} provides standardised benchmarks
+that a growing family of deep methods has attacked: InceptionTime,
+ROCKET, ConvTran, and LITE set the current state of the art on most
+problems~\cite{ismail2025lite,dempster2020rocket,foumani2024convtran}.
+
+Quantum feature extractors remain largely unexplored in this space.
+QPIE~\cite{yao2017quantum} maps an $n$-channel spatial vector into a
+pure $n$-qubit state through angle encoding, then recovers features via
+multi-basis projective measurement.
+In a companion paper~\cite{atadana2026qpie} we applied QPIE to
+3-channel RGB medical images (BloodMNIST, PathMNIST) and found that
+(i) mean-pooling over pixels creates a permutation-invariance ceiling
+that prevents fixed-unitary entanglement schemes from separating their
+scores, and (ii) a data-conditional entanglement scheme (CSE) carries
+a detectable image-domain signal that can be traced to inter-channel
+pixel correlations ($\beta_\rho$ mechanism).
+
+The present paper asks whether this framework, designed for spatial
+data, transfers to temporal data without modification.
+The structural analogy is direct: a time-series with $C$ channels
+sampled over a window of $T$ timesteps is segmented into patches of
+stride $s$, and each patch's $C$-dimensional sample is treated as one
+pixel's channel vector.
+The encoding circuits, multi-basis measurement, and aggregation
+operators are reused exactly.
+
+The transfer is not guaranteed to work.
+Temporal datasets differ from images in three ways relevant to
+quantum encoding:
+(a) inter-channel correlations in IMU or pen-force data are driven by
+    sensor physics, not by label-relevant structure;
+(b) temporal ordering within a series is often class-discriminating
+    in a way that mean-pooling over patches destroys; and
+(c) training set sizes in UEA benchmarks are frequently below 200
+    samples, where high-dimensional concat features overfit.
+
+Our experiments expose all three effects, producing a diagnostic
+framework: given a dataset, the ratio of pooled-features accuracy to
+CNN accuracy predicts which effect dominates and therefore how much
+of the quantum encoding's representational budget is actually used.
+
+\noindent The contributions are:
+\begin{enumerate}
+  \item \textbf{Temporal adaptation of QPIE.}
+    A direct, reusable mapping from MTSC patches to the QPIE
+    encoding pipeline: same circuits, same observables, same
+    aggregation operators.
+  \item \textbf{No entanglement advantage on MTSC.}
+    On the four datasets where the encoding is functional, no entangling
+    scheme exceeds the separable baseline (Sep) at $p < 0.05$, and the
+    data-conditional scheme (CSE) is significantly below Sep. This is
+    consistent with the image-domain $\beta_\rho$ channel-correlation
+    signal being specific to spatial colour structure rather than
+    temporal sensor coupling. A control feeding the QPIE features to a
+    strong classifier (ROCKET) confirms the encoding is lossy relative
+    to the raw signal.
+  \item \textbf{Regime diagnostic.}
+    A dataset-level characterisation based on the pooled-to-CNN
+    accuracy gap, observed across five benchmarks spanning three
+    regimes (temporal-statistics, temporal-order, and encoding-failure).
+  \item \textbf{Dual-split evaluation.}
+    Benchmark results on canonical native splits for direct comparison
+    to published baselines, alongside expanded-split results at
+    deployment-scale training sizes.
+\end{enumerate}
+
+Section~\ref{sec:background} reviews QPIE and MTSC baselines.
+Section~\ref{sec:method} describes the temporal adaptation.
+Section~\ref{sec:experiments} states the experimental protocol.
+Section~\ref{sec:results} reports results across all five benchmarks.
+Section~\ref{sec:discussion} interprets the regime split and
+discusses scope.
+
+% ==================================================================
+\section{Background}
+\label{sec:background}
+
+\subsection{QPIE and multi-basis measurement}
+
+QPIE~\cite{yao2017quantum} assigns one qubit per spatial channel.
+Given a normalised channel vector $\boldsymbol{\theta} \in [0, \pi/2]^n$,
+angle encoding prepares
+\begin{equation}
+  \ket{\psi(\boldsymbol{\theta})} =
+  \bigotimes_{c=1}^{n}
+  \bigl(\cos\theta_c \ket{0} + \sin\theta_c \ket{1}\bigr)
+  \label{eq:sep}
+\end{equation}
+for the separable baseline (Sep).
+Entangling variants insert additional two-qubit gates before or after
+the angle-encoding layer.
+Multi-basis measurement projects each $n$-qubit state onto the
+$\{0,1\}^n$ eigenbasis of the $Z$, $X$, and $Y$ Pauli operators in
+turn, yielding $3 \cdot 2^n$ probability features per state.
+For $n=3$ this gives 24 features per patch.
+Our prior work~\cite{atadana2026qpie} fixed $n=3$ and compared six
+encoding schemes across 14 image classes.
+
+\subsection{Multivariate TSC baselines}
+
+ROCKET~\cite{dempster2020rocket} applies a large bank of random
+convolutional kernels and uses the resulting max-pooled features with
+a ridge classifier.
+InceptionTime~\cite{fawaz2020inceptiontime} stacks multiple inception
+modules with multi-scale 1D convolutions.
+LITE~\cite{ismail2025lite} is a lightweight variant optimised for
+data-scarce and compute-constrained settings.
+ConvTran~\cite{foumani2024convtran} combines 1D convolution with
+transformer self-attention.
+Ismail-Fawaz et al.~\cite{ismail2025lite} report a comprehensive
+comparison across the full UEA archive; we draw all published baseline
+numbers from that survey.
+
+% ==================================================================
+\section{Method}
+\label{sec:method}
+
+\subsection{From multivariate time series to quantum patches}
+\label{sec:patching}
+
+A multivariate series $\mathbf{X} \in \mathbb{R}^{C \times T}$
+with $C = 3$ channels and $T$ timesteps is divided into patches of
+stride $s$. Each patch position $p$ yields a channel vector
+$\mathbf{x}_p \in \mathbb{R}^3$.
+A per-channel robust scaler, fit on the training set, maps each
+coordinate into $[0, 1]$ via the 5th-to-95th-percentile range.
+The scaled vector is then converted to angles
+$\theta_c = (\pi/2)\bar{x}_{p,c}$.
+
+The analogy to QPIE image encoding is exact: a timestep with $C$
+channels plays the role of a pixel with $C$ colour channels, and the
+$P = \lfloor(T - 1)/s\rfloor + 1$ patches play the role of the
+$H \times W$ pixels in an image.
+No modification to the encoding circuits or measurement operators
+is required.
+
+\subsection{Encoding schemes}
+
+We use the five encoding schemes that were validated on MedMNIST~\cite{atadana2026qpie}:
+\begin{itemize}
+  \item \textbf{Sep}: separable baseline (Eq.~\ref{eq:sep}).
+  \item \textbf{CRyE}: controlled-$R_y$ entangler — each qubit is
+    rotated by an angle conditioned on the previous qubit's state.
+  \item \textbf{GBE}: global Bell entangler — a CNOT ladder
+    applied after Sep to entangle all three qubits.
+  \item \textbf{CP-2L}: two-layer circuit alternating angle
+    encoding and CNOT entangling layers.
+  \item \textbf{CSE}: data-conditional scheme — entangling rotation
+    angles are shifted by scaled pairwise channel correlations
+    $\rho_{ij}$ computed within each recording (across its patches),
+    so the shift is a per-sample function of that recording's own
+    inter-channel structure and uses no label or cross-sample
+    information.
+\end{itemize}
+
+All schemes produce a 3-qubit state per patch.
+Multi-basis Z$+$X$+$Y measurement yields 24 features per patch.
+
+\subsection{Classification pipeline}
+
+Three classification heads process the $P \times 24$ feature tensor.
+
+\textbf{Pooled (L2-LR).}
+Per-patch features are aggregated across patches with four marginal
+moments --- mean, standard deviation, skewness, and kurtosis --- and
+the 10th, 25th, 50th, 75th, and 90th percentiles, giving nine
+univariate statistics per feature, together with the
+upper-triangular cross-feature correlations.
+With the $24$ per-patch features this is
+$9 \times 24 = 216$ marginal statistics and
+$\binom{24}{2} = 276$ correlation terms, a
+$216 + 276 = 492$-dimensional recording-level descriptor.
+A $\ell_2$-regularised logistic regression is trained on this fixed
+vector.
+This head is identical to the MedMNIST pipeline and isolates
+pooling-extractable statistics.
+
+\textbf{Concat-LR.}
+Per-patch features are concatenated in temporal order into a single
+vector of feature dimension $d = P \times 24$ (here from $360$ to
+$5256$ across the five datasets at the coarse stride) and fed to the
+same logistic regression. Here $d$ is this feature dimension and $N$
+the number of training recordings (Table~\ref{tab:datasets}); because
+$N$ is as small as $120$--$150$, the head operates in the $d \gg N$
+regime and relies on $\ell_2$ regularisation to generalise.
+It preserves temporal order at the cost of this high-dimensional
+penalty.
+
+\textbf{1D CNN.}
+Per-patch features are treated as a sequence of $P$ frames, each of
+dimension 24.
+A three-block 1D convolutional network with 128 hidden units,
+kernel size 3, and global average pooling followed by a linear
+classifier is trained over 200 epochs with AdamW.
+This head can exploit temporal ordering without the high-dimensional
+penalty of Concat-LR.
+A convolutional sequence head is preferred over a recurrent one
+(LSTM/GRU): with $P \le 79$ frames and as few as $120$ training
+recordings, the locality bias, translation invariance, and low
+parameter count of a 1D CNN with global average pooling resist
+overfitting and match the standard TSC baselines, whereas recurrent
+models are data-hungry and underperform on UEA/UCR benchmarks at this
+sample size.
+An ensemble over 10 independently seeded training runs (soft-vote
+over predicted class probabilities) is used as the headline result.
+
+\textbf{Cross-scheme ensemble.}
+Per-scheme CNN soft-vote distributions are averaged.
+The 4-scheme ensemble excludes CSE;
+the 5-scheme ensemble includes all five schemes.
+
+% ==================================================================
+\section{Experimental Setup}
+\label{sec:experiments}
+
+\subsection{Datasets}
+
+Five 3-channel UEA datasets --- the complete set of 3-dimensional
+problems in the UEA archive --- span the observed regimes and four
+application domains (Table~\ref{tab:datasets}).
+
+\begin{table}[t]
+\caption{Dataset summary. Split sizes from the UEA archive.}
+\label{tab:datasets}
+\centering
+\begin{tabular}{lrrrr}
+\toprule
+Dataset & $N_\text{tr}$ & $N_\text{te}$ & $K$ & $T$ \\
+\midrule
+Epilepsy             & 137  & 138  & 4  & 206 \\
+CharacterTrajectories& 1422 & 1436 & 20 & 119 \\
+UWaveGestureLibrary  & 120  & 320  & 8  & 315 \\
+Handwriting          & 150  & 850  & 26 & 152 \\
+EthanolConcentration & 261  & 263  & 4  & 1751 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textit{Epilepsy}~\cite{bagnall2018uea} contains 3-axis accelerometer
+recordings of four activities (epileptic seizure simulation, walking,
+running, and sawing), consistent with $K = 4$ in
+Table~\ref{tab:datasets}.
+
+\textit{CharacterTrajectories}~\cite{bagnall2018uea} captures
+pen-digitiser data (x-velocity, y-velocity, pen-force) for 20
+character classes.
+
+\textit{UWaveGestureLibrary}~\cite{bagnall2018uea} provides
+3-axis accelerometer data for 8 gesture classes, recorded from
+the wrist.
+
+\textit{Handwriting}~\cite{bagnall2018uea} contains 3-axis
+pen-digitiser data for 26 uppercase letter classes.
+With only 150 training samples across 26 classes, this is the
+most data-scarce dataset in our benchmark.
+
+\textit{EthanolConcentration}~\cite{bagnall2018uea} contains 3-channel
+spectroscopic recordings ($T = 1751$) of distilled-spirit bottles at
+four ethanol concentrations; the discriminative information lies in
+fine spectral structure spread across the long series, and this
+dataset functions as a stress test for the patch-subsampling encoding.
+
+For UWaveGestureLibrary we run two evaluation protocols.
+The \textit{native split} (120/320) is the UEA multivariate
+benchmark used by Ismail-Fawaz et al.~\cite{ismail2025lite} and
+allows direct SOTA comparison.
+The \textit{stacked-univariate split} (896/3582) stacks the three
+archival univariate axes (UWaveGestureLibraryX/Y/Z) as three channels,
+reconstructing the 3-channel signal at 7.5$\times$ the training sample
+count; labels are aligned and verified.
+These are the same gesture instances as the UCR
+\textit{UWaveGestureLibraryAll} benchmark, which concatenates the
+identical three axes into a single univariate series. Published
+bake-off baselines on UWaveGestureLibraryAll therefore provide a
+direct, same-instance comparison, with the caveat that they operate on
+the concatenated univariate form rather than our 3-channel stack.
+
+\subsection{Covariate details and patch parameters}
+
+Each patch is a single timestep sampled at stride $s$, so the patch
+count is $P = \lfloor (T-1)/s \rfloor + 1$ and the stride sets temporal
+resolution by subsampling rather than windowing.
+The pooled and Concat-LR ablations use a coarse stride $s = 8$: the
+pooled descriptor is fixed at $d = 492$ regardless of $P$ (it
+aggregates across patches), whereas Concat-LR scales as $d = P \times
+24$. The CNN uses a fine stride $s = 4$, yielding denser sequences of
+up to $P = 79$ frames --- the maximum, on UWaveGestureLibrary with
+$T = 315$ ($\lfloor 314/4 \rfloor + 1 = 79$) --- for the convolution
+to exploit.
+All per-channel scalers are fit on training data only and applied
+to test data without leakage.
+Ten independent seeds are used per configuration; paired $t$-tests
+over the 10-seed distributions test scheme-vs-Sep comparisons.
+
+\subsection{Baselines}
+
+Published accuracy figures for InceptionTime, ROCKET,
+ConvTran, D-CNN, FCN, ResNet, LITEMV, and LITEMVTime are taken from
+Ismail-Fawaz et al.~\cite{ismail2025lite}, Table~6.
+UWaveGestureLibraryAll baselines (ROCKET, HIVE-COTE, TS-CHIEF,
+InceptionTime, ResNet) are the UCR ``bake off'' accuracies reported by
+Dempster et al.~\cite{dempster2020rocket}, Table~1; the Handwriting
+SOTA is the multivariate bake-off best of Ruiz et
+al.~\cite{ruiz2020bakeoff}.
+We additionally run multivariate ROCKET ourselves on the identical
+native splits and the stacked UWave split (\texttt{aeon}
+implementation of~\cite{dempster2020rocket}); these same-representation
+numbers appear as ROCKET$^\S$ in Table~\ref{tab:main} and in
+Table~\ref{tab:stacked}.
+
+% ==================================================================
+\section{Results}
+\label{sec:results}
+
+\subsection{Multi-dataset benchmark (native splits)}
+\label{sec:main_results}
+
+Table~\ref{tab:main} reports the headline CNN ensemble accuracy for
+each dataset alongside the best published baseline.
+
+\begin{table}[t]
+\caption{CNN ensemble accuracy on native UEA splits.
+Best QPIE scheme per dataset is named; deep-learning baselines from
+Ismail-Fawaz et al.~\cite{ismail2025lite}.
+$\Delta$ = QPIE best $-$ published SOTA (percentage points).
+$^\dagger$Handwriting SOTA is the multivariate bake-off best
+(InceptionTime~\cite{ruiz2020bakeoff}); the best LITE-survey
+deep-learning result is 0.400 (LMVT), which QPIE exceeds by 13.9.
+$^\S$Multivariate ROCKET~\cite{dempster2020rocket} on the raw
+3-channel series and identical splits (this work).}
+\label{tab:main}
+\centering
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lcccc}
+\toprule
+Dataset & Best QPIE & ROCKET$^\S$ & SOTA & $\Delta$ \\
+\midrule
+Epilepsy              & 0.964 (Sep)  & 0.986 & 0.993 (LMVT)  & $-2.9$  \\
+CharacterTrajectories & 0.996 (GBE)  & 0.993 & 0.996 (LMVT)  & $+0.0$  \\
+UWave (native)        & 0.850 (GBE)  & 0.941 & 0.909 (IT)    & $-5.6$  \\
+Handwriting           & 0.539 (Sep)  & 0.587 & 0.657 (IT)$^\dagger$ & $-11.8$ \\
+EthanolConcentration  & 0.274 (CP-2L)& 0.434 & 0.692 (LMVT)  & $-41.8$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+On \textit{CharacterTrajectories} QPIE matches the LITEMVTime SOTA
+(0.996 vs.\ 0.996), and on \textit{Epilepsy} it lands within 2.9
+points of the 0.993 published best --- both with a single
+109\,704-parameter CNN.
+On \textit{UWaveGestureLibrary}, the 5-scheme cross-ensemble of 0.853
+matches LITEMVTime (0.847) and ties LITEMV and FCN (0.850), falling
+5.6 points below InceptionTime's 0.909.
+On \textit{Handwriting}, the Sep CNN ensemble reaches 0.539. This
+exceeds every deep-learning baseline in the LITE survey (best LMVT
+0.400) but stays below the strongest convolutional classifiers in the
+multivariate bake-off (InceptionTime 0.657, ResNet 0.598, ROCKET
+0.567~\cite{ruiz2020bakeoff}). The 35-point spread between the two
+baseline sets reflects how sensitive this 26-class, 150-sample problem
+is to evaluation protocol; QPIE is competitive on it rather than
+state of the art.
+
+To remove any baseline-protocol ambiguity we ran multivariate
+ROCKET~\cite{dempster2020rocket} on the raw 3-channel series and the
+identical splits underlying QPIE's encoding (Table~\ref{tab:main},
+ROCKET$^\S$ column). On equal footing ROCKET matches or beats the quantum encoding
+on every dataset except CharacterTrajectories: Epilepsy $-2.2$, UWave
+$-9.1$, Handwriting $-4.8$ points relative to QPIE. A fast classical
+convolutional baseline is therefore at least as accurate as QPIE
+throughout. The contribution of this work is consequently the transfer
+behaviour, the regime diagnostic, and the entanglement-null, not
+competitive accuracy.
+
+A sharper test asks whether the encoding helps a strong classifier
+rather than the logistic and CNN heads above. We fed each scheme's
+QPIE per-patch features --- a 24-channel, length-$P$ series --- to the
+same ROCKET, and compared against ROCKET on the raw 3-channel input
+(Table~\ref{tab:rocketqpie}). The encoding is lossy: ROCKET on raw
+equals or beats ROCKET on the best QPIE feature set on three of the
+four functional datasets (Epilepsy $-2.2$, UWave $-1.9$, Handwriting
+$-9.8$ points), tying only on the saturated CharacterTrajectories
+($+0.2$). Entanglement again provides no benefit (GBE is the worst
+input on UWave and Handwriting). The quantum feature map discards
+label-relevant structure that a random-convolution baseline extracts
+directly from the raw signal.
+
+\begin{table}[t]
+\caption{The QPIE encoding as a feature transform. ROCKET accuracy on
+the raw 3-channel series vs.\ on the best-scheme QPIE per-patch
+features (24-channel, length-$P$). Both use the same \texttt{aeon}
+ROCKET; native splits.}
+\label{tab:rocketqpie}
+\centering
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{lcc}
+\toprule
+Dataset & ROCKET (raw) & ROCKET (best QPIE feat.) \\
+\midrule
+Epilepsy              & 0.986 & 0.964 (CRyE)  \\
+CharacterTrajectories & 0.993 & 0.995 (CP-2L) \\
+UWave (native)        & 0.941 & 0.922 (CSE)   \\
+Handwriting           & 0.587 & 0.489 (CP-2L) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The full ablation table (pooled, concat, CNN per scheme per dataset)
+is given in Table~\ref{tab:ablation}.
+
+\begin{table*}[t]
+\caption{Accuracy across ablation rungs and encoding schemes.
+Pooled: L2-LogReg on 492-dim aggregated features.
+Concat-LR: L2-LogReg on temporally ordered patch features.
+CNN ens: 10-seed soft-vote ensemble.
+Values are mean over 10 seeds; CNN ens is the soft-vote accuracy.
+Bold marks the numerically highest CNN-ens (soft-vote) accuracy per
+dataset; per-seed CNN $\sigma$ ranges 0.003 (CharacterTrajectories) to
+0.018 (UWave), so top-scheme differences at the CNN rung are within
+seed noise (the only significant scheme effect is CSE\,$<$\,Sep,
+Table~\ref{tab:cse}).}
+\label{tab:ablation}
+\centering
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{llccccc}
+\toprule
+Dataset & Rung & Sep & CRyE & GBE & CP-2L & CSE \\
+\midrule
+\multirow{3}{*}{Epilepsy}
+  & Pooled    & $0.937 \pm 0.015$ & $0.912 \pm 0.019$ & $0.910 \pm 0.022$
+               & $0.919 \pm 0.015$ & $0.899 \pm 0.015$ \\
+  & Concat-LR & $0.820 \pm 0.028$ & $0.549 \pm 0.041$ & $0.622 \pm 0.019$
+               & $0.744 \pm 0.021$ & $0.754 \pm 0.018$ \\
+  & CNN ens   & $0.964$           & $0.942$           & $0.935$
+               & $0.957$           & $0.942$           \\
+\midrule
+\multirow{3}{*}{CharacterTrajectories}
+  & Pooled    & $0.960 \pm 0.004$ & $0.959 \pm 0.004$ & $0.956 \pm 0.004$
+               & $0.956 \pm 0.004$ & $0.960 \pm 0.005$ \\
+  & Concat-LR & $0.980 \pm 0.002$ & $0.981 \pm 0.002$ & $0.979 \pm 0.002$
+               & $0.976 \pm 0.001$ & $0.981 \pm 0.002$ \\
+  & CNN ens   & $0.995$           & $0.995$           & $\mathbf{0.996}$
+               & $0.996$           & $0.995$           \\
+\midrule
+\multirow{3}{*}{UWave (native)}
+  & Pooled    & $0.569 \pm 0.024$ & $0.525 \pm 0.030$ & $0.530 \pm 0.017$
+               & $0.547 \pm 0.027$ & $0.553 \pm 0.031$ \\
+  & Concat-LR & $0.834 \pm 0.022$ & $0.805 \pm 0.023$ & $0.679 \pm 0.016$
+               & $0.812 \pm 0.019$ & $0.804 \pm 0.017$ \\
+  & CNN ens   & $0.828$           & $0.828$           & $\mathbf{0.850}$
+               & $0.828$           & $0.803$           \\
+\midrule
+\multirow{3}{*}{Handwriting}
+  & Pooled    & $0.157 \pm 0.022$ & $0.134 \pm 0.012$ & $0.146 \pm 0.013$
+               & $0.150 \pm 0.015$ & $0.118 \pm 0.014$ \\
+  & Concat-LR & $0.218 \pm 0.029$ & $0.215 \pm 0.025$ & $0.179 \pm 0.013$
+               & $0.210 \pm 0.022$ & $0.188 \pm 0.022$ \\
+  & CNN ens   & $\mathbf{0.539}$  & $0.507$           & $0.404$
+               & $0.492$           & $0.397$           \\
+\midrule
+\multirow{3}{*}{EthanolConcentration}
+  & Pooled    & $0.283 \pm 0.024$ & $0.292 \pm 0.020$ & $0.269 \pm 0.026$
+               & $0.265 \pm 0.014$ & $0.289 \pm 0.020$ \\
+  & Concat-LR & $0.308 \pm 0.008$ & $0.321 \pm 0.017$ & $0.337 \pm 0.017$
+               & $0.332 \pm 0.018$ & $0.309 \pm 0.023$ \\
+  & CNN ens   & $0.255$           & $0.247$           & $0.236$
+               & $\mathbf{0.274}$  & $0.221$           \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Regime diagnostic}
+\label{sec:regime}
+
+The pooled-to-CNN accuracy gap separates the five datasets into three
+regimes (Table~\ref{tab:regime}).
+
+\begin{table}[t]
+\caption{Regime classification by pooled-to-CNN accuracy gap
+(Sep scheme, native split).}
+\label{tab:regime}
+\centering
+\begin{tabular}{lccc}
+\toprule
+Dataset & Pooled & CNN ens & Gap \\
+\midrule
+Epilepsy              & 0.937 & 0.964 & $+$2.7 \\
+CharacterTrajectories & 0.960 & 0.995 & $+$3.5 \\
+\midrule
+UWave (native)        & 0.569 & 0.828 & $+$25.9 \\
+Handwriting           & 0.157 & 0.539 & $+$38.2 \\
+\midrule
+EthanolConcentration  & 0.283 & 0.255 & $-$2.8 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textit{Epilepsy} and \textit{CharacterTrajectories} show small gaps
+(2.7 and 3.5 points): class-discriminating information is concentrated
+in per-patch amplitude and frequency statistics that mean-pooling
+preserves.
+These are the \textit{temporal-statistics} datasets.
+
+\textit{UWaveGestureLibrary} and \textit{Handwriting} show large gaps
+(25.9 and 38.2 points): temporal ordering is required, and pooling
+destroys it.
+These are the \textit{temporal-order} datasets.
+
+\textit{EthanolConcentration} has a small gap ($-2.8$ points: the CNN
+does not beat pooling) yet both rungs sit near the 25\% four-class
+chance level. A small gap normally signals the temporal-statistics
+regime; here it instead marks an \textit{encoding-failure} regime. The
+discriminative signal is fine spectral detail spread along a 1751-step
+series, and sampling one timestep every $s$ steps discards it before
+encoding. The gap therefore predicts whether the CNN will beat
+pooling, not whether the encoding captured usable signal at all ---
+EthanolConcentration shows the two questions are distinct, and bounds
+the diagnostic.
+Here CP-2L is the one scheme to significantly edge Sep (by 1.7 points,
+$p = 0.04$), but both sit near the 25\% four-class floor, so it is not
+a meaningful advantage; the entanglement-null is therefore stated only
+for the four functional datasets.
+
+The Concat-LR rung does not resolve the gap on Handwriting or UWave
+because $d \gg N_\text{train}$ (456-dimensional concatenation with
+150 or 120 training samples) causes overfitting that $\ell_2$
+regularisation only partially corrects.
+The 1D CNN escapes this by treating patches as a short sequence
+rather than a flat vector.
+
+Mean inter-channel Pearson $\lvert\rho\rvert$ values
+(Epilepsy 0.006, CharacterTrajectories 0.077, Handwriting 0.098,
+UWave 0.201) do not predict the regime cluster:
+UWave has the highest inter-channel correlation yet falls in the
+temporal-order regime.
+This confirms that the relevant structure is temporal order of patches,
+not the spatial correlation between channels.
+
+\subsection{CSE ablation: domain-specificity of the $\beta_\rho$ mechanism}
+\label{sec:cse}
+
+CSE is significantly below Sep on all five datasets at the CNN rung
+(Table~\ref{tab:cse}).
+The gaps are largest on temporal-order datasets (Handwriting $-$13.0
+points, UWave $-$2.9 points), small but still significant on
+temporal-statistics datasets (Epilepsy $-$0.9 points, $p = 0.013$;
+CharacterTrajectories $-$0.1 points, $p = 0.009$), and $-$2.4 points
+on the near-chance EthanolConcentration ($p < 0.001$).
+
+\begin{table}[t]
+\caption{CSE vs Sep at the CNN rung. $\Delta$ = CSE $-$ Sep mean
+accuracy; $p$-value from paired $t$-test over 10 seeds.
+$^*$ $p < 0.05$.}
+\label{tab:cse}
+\centering
+\begin{tabular}{lccc}
+\toprule
+Dataset & $\Delta$ (ppts) & $p$ & Sig. \\
+\midrule
+Epilepsy              & $-0.87$ & 0.013 & $^*$ \\
+CharacterTrajectories & $-0.08$ & 0.009 & $^*$ \\
+UWave (native)        & $-2.91$ & 0.001 & $^*$ \\
+Handwriting           & $-12.97$& $<$0.001 & $^*$ \\
+EthanolConcentration  & $-2.43$ & $<$0.001 & $^*$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+On PathMNIST (RGB images), CSE outperformed Sep by exploiting
+image-domain colour correlations: the inter-pixel $\beta_\rho$ signal
+is label-relevant because colour distributions are class-conditional.
+On UEA time series, inter-channel correlations reflect sensor
+coupling (e.g., gravity components in a wrist IMU) rather than class
+membership.
+The CSE scheme shifts entangling angles by these correlations and
+thereby injects class-irrelevant structure into the quantum state,
+degrading classification.
+The deficit is stable across seeds: on Handwriting, where it is
+largest, the per-seed standard deviation is 0.012, an order of
+magnitude below the 13-point mean gap, so the drop reflects the
+encoding rather than training variance. The fixed Bell entangler (GBE)
+collapses by a similar margin on Handwriting (CNN mean 0.364),
+indicating that on fine-grained order-dependent tasks global
+entanglement degrades the per-patch features generally; CSE's
+data-conditional shifts add nothing beyond this.
+
+The cross-scheme ensemble also underperforms the best single-scheme
+CNN ensemble on four of five datasets (Epilepsy $-0.7$, Handwriting
+$-2.1$, CharacterTrajectories $-0.1$, EthanolConcentration $-3.8$
+points): CSE degrades the ensemble when included.
+Only on UWave (8 classes, some scheme diversity) does the cross-scheme
+ensemble provide a small gain ($+0.3$ points over GBE alone).
+
+\subsection{Practical performance: stacked-univariate UWave split}
+\label{sec:utility}
+
+On the stacked split (896 train, 3582 test) the Sep 1D CNN ensemble
+reaches 97.5\%; the 5-scheme cross-ensemble adds no meaningful gain
+(97.6\%, Table~\ref{tab:stacked}).
+Multivariate ROCKET on the raw 3-channel stack reaches 98.4\%
+(this work), so on equal footing QPIE trails ROCKET by 0.8 points; it
+matches the univariate-concat bake-off ROCKET (97.5\%) and edges
+HIVE-COTE and TS-CHIEF (96.9\%).
+
+\begin{table}[t]
+\caption{Accuracy on the \textit{UWaveGestureLibraryAll} benchmark
+(896/3582) --- the same gesture instances as our stacked-univariate
+split, in concatenated univariate form. Univariate baselines are the
+UCR ``bake off'' accuracies from Dempster et al.~\cite{dempster2020rocket},
+Table~1; ``ROCKET (3-channel, this work)'' is multivariate ROCKET on
+our identical 3-channel stack.}
+\label{tab:stacked}
+\centering
+\begin{tabular}{lc}
+\toprule
+Method & Accuracy \\
+\midrule
+ResNet                                   & 0.860 \\
+InceptionTime~\cite{fawaz2020inceptiontime} & 0.955 \\
+HIVE-COTE~\cite{bagnall2020hivecote}     & 0.969 \\
+TS-CHIEF                                 & 0.969 \\
+ROCKET~\cite{dempster2020rocket}         & 0.975 \\
+\midrule
+ROCKET (3-channel, this work)            & \textbf{0.984} \\
+QPIE Sep (pooled, L2-LR)                 & 0.711 \\
+QPIE Sep (concat, L2-LR)                 & 0.932 \\
+QPIE Sep (CNN ens, 10 seeds)             & 0.975 \\
+QPIE 5-scheme cross-ens                  & 0.976 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The gap between the native split (85.3\%) and the stacked split
+(97.6\%) reflects the training set size: 120 vs 896 samples.
+The 7.5$\times$ increase in training data lifts QPIE from 5.6 points
+below the native-split SOTA to parity with the strongest published
+univariate baseline, though multivariate ROCKET on the same 3-channel
+stack remains 0.8 points ahead.
+The Table~\ref{tab:stacked} comparison uses UWaveGestureLibraryAll
+bake-off numbers, which evaluate the identical instances in
+concatenated univariate form; the only methodological difference is
+that QPIE consumes the three axes as channels rather than as one
+concatenated series.
+
+% ==================================================================
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{The pooled-to-CNN gap as a practical diagnostic}
+
+The regime split is visible without running the full CNN ablation:
+the pooled rung alone predicts whether the CNN will provide a large
+lift.
+Datasets where pooled accuracy is within 10 points of
+a reasonable ceiling for the problem (e.g., Epilepsy at 93.7\% with
+4 classes) are likely in the temporal-statistics regime, and the
+pooled features can serve as a low-cost representation.
+Datasets where pooled accuracy is far short of a usable level
+(e.g., Handwriting at 15.7\% --- well above the 3.8\% random baseline
+for 26 classes, but far below the CNN's 53.9\%) are in the
+temporal-order regime, and the CNN is necessary.
+The gap predicts whether the CNN will help, not whether the encoding
+succeeds at all: on EthanolConcentration pooled and CNN agree near the
+four-class chance level because the encoding never captured the
+discriminative spectral detail.
+
+This has a practical reading outside the quantum ML context: it
+identifies whether a dataset's label information is concentrated in
+local amplitude/frequency statistics (amenable to any mean-pooling
+feature extractor) or in temporal ordering (requiring sequence models).
+The quantum encoding provides a particular projection of the
+per-patch distribution, but the regime split itself is a property of
+the dataset and classifier family, not of the quantum circuit.
+
+\subsection{Efficiency of pooled features}
+
+On CharacterTrajectories (temporal-statistics regime) the Sep pooled
+rung reaches 96.0\% with a 492-dimensional vector and an L2
+logistic regression.
+Wall-clock extraction time is under 2 seconds on a consumer laptop
+(Apple M4, MPS backend).
+The CNN adds 128 seconds per scheme but only 3.5 accuracy points
+on this dataset.
+For deployment in resource-constrained settings the pooled rung alone
+is competitive.
+
+\subsection{Limitations}
+
+The 3-qubit architecture is fixed.
+All circuits, observables, and aggregation operators are
+simulation-based; no quantum hardware is used.
+At $n = 3$ qubits the encoding is classically simulable: the schemes
+are evaluated as fixed feature maps and the study makes no claim of
+quantum computational advantage. The contribution is the transfer
+behaviour and the regime characterisation, not a speedup.
+The five benchmarks are the complete set of 3-dimensional problems in
+the UEA archive; the $n$-qubit generalisation needed for
+higher-channel datasets remains future work.
+The regime diagnostic is empirical: the pooled-to-CNN gap threshold
+is derived from five datasets and may not generalise to domains where
+both effects are present simultaneously. EthanolConcentration already
+exposes one failure mode --- a small gap that reflects encoding
+failure rather than the temporal-statistics regime.
+
+% ==================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+
+The QPIE 3-qubit encoding pipeline transfers from RGB medical
+images to 3-channel multivariate time-series with no circuit
+modifications.
+Across five UEA benchmarks --- the complete 3-dimensional subset ---
+the pooled-to-CNN accuracy gap separates temporal-statistics datasets
+(small gap: Epilepsy, CharacterTrajectories) from temporal-order
+datasets (large gap: UWave, Handwriting), with EthanolConcentration a
+third case where both rungs fail near chance because patch subsampling
+discards its spectral detail.
+On the native UWave benchmark the cross-scheme ensemble (85.3\%)
+ties lightweight baselines but trails the InceptionTime SOTA by
+5.6 points.
+On Handwriting the Sep CNN ensemble (53.9\%) tops every deep-learning
+baseline in the LITE survey but trails the strongest bake-off
+classifiers.
+On the UWaveGestureLibraryAll split (896 training samples) the
+separable CNN ensemble reaches 97.5\%, within a point of multivariate
+ROCKET on the raw 3-channel stack (98.4\%).
+The data-conditional entanglement scheme (CSE) is consistently below
+Sep on all four functional datasets, consistent with the image-domain
+$\beta_\rho$ mechanism being inactive when inter-channel correlations
+are sensor-physical rather than label-conditional.
+These results do not position QPIE as a competitive classifier: a
+same-representation ROCKET matches or beats it on every dataset except
+the saturated CharacterTrajectories, and feeding QPIE features into
+ROCKET is lossy relative to the raw signal. The contribution is the
+clean transfer of the encoding, the entanglement-null, and the regime
+diagnostic --- a dataset-level prior for whether per-patch statistics,
+temporal order, or neither carries the label.
+
+% ==================================================================
+\ifCLASSOPTIONcompsoc
+  \section*{Acknowledgments}
+\else
+  \section*{Acknowledgment}
+\fi
+
+The authors declare that AI writing assistance was used in the
+preparation of this manuscript. All quantitative claims were verified
+against notebook outputs by the authors.
+
+% ==================================================================
+\begin{thebibliography}{99}
+
+\bibitem{yao2017quantum}
+X.-W.~Yao, H.~Wang, Z.~Liao, M.-C.~Chen \emph{et al.},
+``Quantum image processing and its application to edge detection:
+Theory and experiment,''
+\emph{Phys. Rev. X}, vol.~7, p.~031041, 2017.
+
+\bibitem{atadana2026qpie}
+S.~Atadana and Ö.~Karabiber Cura,
+``When does entanglement help in quantum image encoding?
+A per-image mechanism test on {MedMNIST},''
+in \emph{Proc. IEEE Int. Conf. Quantum Comput. Eng. (QCE)}, 2026,
+to appear.
+
+\bibitem{bagnall2018uea}
+A.~Bagnall, H.~A.~Dau, J.~Lines, M.~Flynn, J.~Large, A.~Bostrom,
+P.~Southam, and E.~Keogh,
+``The {UEA} multivariate time series classification archive, 2018,''
+\emph{arXiv:1811.00075}, 2018.
+
+\bibitem{ismail2025lite}
+A.~Ismail-Fawaz, M.~Devanne, S.~Berretti, J.~Weber, and G.~Forestier,
+``Look into the {LITE} in deep learning for time series classification,''
+\emph{Int. J. Data Sci. Anal.}, vol.~20, pp.~4029--4049, 2025.
+
+\bibitem{dempster2020rocket}
+A.~Dempster, F.~Petitjean, and G.~I.~Webb,
+``{ROCKET}: Exceptionally fast and accurate time series classification
+using random convolutional kernels,''
+\emph{Data Min. Knowl. Discov.}, vol.~34, no.~5, pp.~1454--1495, 2020.
+
+\bibitem{fawaz2020inceptiontime}
+H.~Ismail-Fawaz, B.~Lucas, G.~Forestier, C.~Pelletier, D.~F.~Schmidt,
+J.~Weber, G.~I.~Webb, L.~Idoumghar, P.-A.~Muller, and F.~Petitjean,
+``{InceptionTime}: Finding {AlexNet} for time series classification,''
+\emph{Data Min. Knowl. Discov.}, vol.~34, no.~6, pp.~1936--1962, 2020.
+
+\bibitem{foumani2024convtran}
+N.~M.~Foumani, C.~W.~Tan, G.~I.~Webb, and M.~Salehi,
+``Improving position encoding of transformers for multivariate time
+series classification,''
+\emph{Data Min. Knowl. Discov.}, vol.~38, no.~1, pp.~22--48, 2024.
+
+\bibitem{ruiz2020bakeoff}
+A.~P.~Ruiz, M.~Flynn, J.~Large, M.~Middlehurst, and A.~Bagnall,
+``The great multivariate time series classification bake off: a review
+and experimental evaluation of recent algorithmic advances,''
+\emph{Data Min. Knowl. Discov.}, vol.~35, no.~2, pp.~401--449, 2021.
+
+\bibitem{bagnall2020hivecote}
+A.~Bagnall, M.~Flynn, J.~Large, J.~Lines, and M.~Middlehurst,
+``On the usage and performance of the hierarchical vote collective of
+transformation-based ensembles version 1.0 ({HIVE-COTE} v1.0),''
+in \emph{Advanced Analytics and Learning on Temporal Data (AALTD)},
+ser. LNAI, vol.~12588.\ \ Springer, 2020, pp.~3--18.
+
+\end{thebibliography}
+
+\end{document}

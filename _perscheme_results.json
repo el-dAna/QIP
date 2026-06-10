@@ -1,0 +1,233 @@
+{
+  "UWaveGestureLibrary": {
+    "train": [
+      120,
+      3,
+      315
+    ],
+    "K": 8,
+    "sota": 0.909,
+    "sota_model": "IT",
+    "lmvt_pub": 0.847,
+    "local_lmvt_raw": 0.915625,
+    "schemes": {
+      "Sep": {
+        "acc": 0.9125,
+        "ensemble": 0.909375,
+        "beats_sota": [
+          "scheme",
+          "ensemble"
+        ]
+      },
+      "CRyE": {
+        "acc": 0.909375,
+        "ensemble": 0.90625,
+        "beats_sota": [
+          "scheme"
+        ]
+      },
+      "GBE": {
+        "acc": 0.84375,
+        "ensemble": 0.88125,
+        "beats_sota": []
+      },
+      "CP-2L": {
+        "acc": 0.9,
+        "ensemble": 0.90625,
+        "beats_sota": []
+      },
+      "CSE": {
+        "acc": 0.896875,
+        "ensemble": 0.9,
+        "beats_sota": []
+      }
+    },
+    "raw": 0.8875,
+    "raw_repro": "OK",
+    "best_scheme": "Sep",
+    "best_scheme_acc": 0.9125,
+    "done": true
+  },
+  "Epilepsy": {
+    "train": [
+      137,
+      3,
+      206
+    ],
+    "K": 4,
+    "sota": 0.993,
+    "sota_model": "LMVT",
+    "lmvt_pub": 0.993,
+    "local_lmvt_raw": 1.0,
+    "schemes": {
+      "Sep": {
+        "acc": 0.9492753623188406,
+        "ensemble": 0.9855072463768116,
+        "beats_sota": []
+      },
+      "CRyE": {
+        "acc": 0.927536231884058,
+        "ensemble": 0.9927536231884058,
+        "beats_sota": []
+      },
+      "GBE": {
+        "acc": 0.9347826086956522,
+        "ensemble": 0.9710144927536232,
+        "beats_sota": []
+      },
+      "CP-2L": {
+        "acc": 0.9565217391304348,
+        "ensemble": 0.9927536231884058,
+        "beats_sota": []
+      },
+      "CSE": {
+        "acc": 0.9492753623188406,
+        "ensemble": 0.9927536231884058,
+        "beats_sota": []
+      }
+    },
+    "raw": 1.0,
+    "raw_repro": "OK",
+    "best_scheme": "CP-2L",
+    "best_scheme_acc": 0.9565217391304348,
+    "done": true
+  },
+  "Handwriting": {
+    "train": [
+      150,
+      3,
+      152
+    ],
+    "K": 26,
+    "sota": 0.657,
+    "sota_model": "IT",
+    "lmvt_pub": 0.4,
+    "local_lmvt_raw": 0.6376470588235295,
+    "schemes": {
+      "Sep": {
+        "acc": 0.4011764705882353,
+        "ensemble": 0.58,
+        "beats_sota": []
+      },
+      "CRyE": {
+        "acc": 0.42823529411764705,
+        "ensemble": 0.6023529411764705,
+        "beats_sota": []
+      },
+      "GBE": {
+        "acc": 0.3129411764705882,
+        "ensemble": 0.5635294117647058,
+        "beats_sota": []
+      },
+      "CP-2L": {
+        "acc": 0.41058823529411764,
+        "ensemble": 0.5988235294117648,
+        "beats_sota": []
+      },
+      "CSE": {
+        "acc": 0.34823529411764703,
+        "ensemble": 0.571764705882353,
+        "beats_sota": []
+      }
+    },
+    "raw": 0.5929411764705882,
+    "raw_repro": "CHECK",
+    "best_scheme": "CRyE",
+    "best_scheme_acc": 0.42823529411764705,
+    "done": true
+  },
+  "EthanolConcentration": {
+    "train": [
+      261,
+      3,
+      1751
+    ],
+    "K": 4,
+    "sota": 0.692,
+    "sota_model": "LMVT",
+    "lmvt_pub": 0.692,
+    "local_lmvt_raw": 0.2623574144486692,
+    "schemes": {
+      "Sep": {
+        "acc": 0.30798479087452474,
+        "ensemble": 0.28517110266159695,
+        "beats_sota": []
+      },
+      "CRyE": {
+        "acc": 0.2623574144486692,
+        "ensemble": 0.29277566539923955,
+        "beats_sota": []
+      },
+      "GBE": {
+        "acc": 0.2737642585551331,
+        "ensemble": 0.29277566539923955,
+        "beats_sota": []
+      },
+      "CP-2L": {
+        "acc": 0.2585551330798479,
+        "ensemble": 0.27756653992395436,
+        "beats_sota": []
+      },
+      "CSE": {
+        "acc": 0.30038022813688214,
+        "ensemble": 0.26996197718631176,
+        "beats_sota": []
+      }
+    },
+    "raw": 0.29277566539923955,
+    "raw_repro": "CHECK",
+    "best_scheme": "Sep",
+    "best_scheme_acc": 0.30798479087452474,
+    "done": true
+  },
+  "CharacterTrajectories": {
+    "train": [
+      1422,
+      3,
+      119
+    ],
+    "K": 20,
+    "sota": 0.996,
+    "sota_model": "LMVT",
+    "lmvt_pub": 0.996,
+    "local_lmvt_raw": 0.9958217270194986,
+    "schemes": {
+      "Sep": {
+        "acc": 0.9937325905292479,
+        "ensemble": 0.9965181058495822,
+        "beats_sota": [
+          "ensemble"
+        ]
+      },
+      "CRyE": {
+        "acc": 0.9937325905292479,
+        "ensemble": 0.9958217270194986,
+        "beats_sota": []
+      },
+      "GBE": {
+        "acc": 0.9944289693593314,
+        "ensemble": 0.9965181058495822,
+        "beats_sota": [
+          "ensemble"
+        ]
+      },
+      "CP-2L": {
+        "acc": 0.9916434540389972,
+        "ensemble": 0.9958217270194986,
+        "beats_sota": []
+      },
+      "CSE": {
+        "acc": 0.9937325905292479,
+        "ensemble": 0.9972144846796658,
+        "beats_sota": [
+          "ensemble"
+        ]
+      }
+    },
+    "raw": 0.9972144846796658,
+    "raw_repro": "OK",
+    "best_scheme": "GBE",
+    "best_scheme_acc": 0.9944289693593314,
+    "done": true
+  }
+}

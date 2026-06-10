@@ -1,0 +1,85 @@
+{
+  "UWaveGestureLibrary": {
+    "train": [
+      120,
+      3,
+      315
+    ],
+    "K": 8,
+    "lmvt_pub": 0.847,
+    "sota": 0.909,
+    "raw": 0.915625,
+    "raw_repro": "MISMATCH",
+    "qpie_all": 0.91875,
+    "ensemble": 0.925,
+    "beats_sota": [
+      "qpie_all",
+      "ensemble"
+    ],
+    "done": true
+  },
+  "Epilepsy": {
+    "train": [
+      137,
+      3,
+      206
+    ],
+    "K": 4,
+    "lmvt_pub": 0.993,
+    "sota": 0.993,
+    "raw": 1.0,
+    "raw_repro": "OK",
+    "qpie_all": 0.9710144927536232,
+    "ensemble": 0.9927536231884058,
+    "beats_sota": [],
+    "done": true
+  },
+  "Handwriting": {
+    "train": [
+      150,
+      3,
+      152
+    ],
+    "K": 26,
+    "lmvt_pub": 0.4,
+    "sota": 0.657,
+    "raw": 0.6376470588235295,
+    "raw_repro": "MISMATCH",
+    "qpie_all": 0.29294117647058826,
+    "ensemble": 0.5929411764705882,
+    "beats_sota": [],
+    "done": true
+  },
+  "EthanolConcentration": {
+    "train": [
+      261,
+      3,
+      1751
+    ],
+    "K": 4,
+    "lmvt_pub": 0.692,
+    "sota": 0.692,
+    "raw": 0.2623574144486692,
+    "raw_repro": "MISMATCH",
+    "qpie_all": 0.27756653992395436,
+    "ensemble": 0.2813688212927757,
+    "beats_sota": [],
+    "done": true
+  },
+  "CharacterTrajectories": {
+    "train": [
+      1422,
+      3,
+      119
+    ],
+    "K": 20,
+    "lmvt_pub": 0.996,
+    "sota": 0.996,
+    "raw": 0.9958217270194986,
+    "raw_repro": "OK",
+    "qpie_all": 0.9958217270194986,
+    "ensemble": 0.9958217270194986,
+    "beats_sota": [],
+    "done": true
+  }
+}
