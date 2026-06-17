@@ -16,9 +16,37 @@ QMBC-Net −10.7 vs CNN — TRACE BEFORE CITING).
 | UWaveGestureLibrary    | 8  | 3 (x,y,z)| 0.888 | 0.9125 | 0.9094 (CRyE)            | **−0.003** | 0.112 |
 | EthanolConcentration   | 4  | 3        | 0.293 | 0.308  | 0.300 (CSE)              | −0.008  | 0.707 (all near chance) |
 
-Schemes present: Sep, CRyE, GBE, CP-2L, CSE.
-ASSUMED ordering (CONFIRM WITH USER): Sep = separable/no-entanglement baseline;
-CRyE / GBE / CP-2L / CSE = entangling variants of varying strength.
+Schemes present (multivariate): Sep, CRyE, GBE, CP-2L, CSE.
+ORDERING CONFIRMED 2026-06-17 (least → most entangling):
+**Sep < CRyE < CSE < GBE < PA-CSE < CP-2L.** PA-CSE = pixel-adaptive CSE (image/ECG only,
+not in the multivariate set). Sep is the only separable/no-entanglement scheme.
+
+## KEYSTONE RESULT — image-domain dose-response (rigorous, supersedes the un-CI'd table above)
+Traced to `paper/main.tex` Table `tab:path` + line 677. PathMNIST, PyTorch MLP, **5 seeds**,
+paired t-tests vs Sep (Z+X+Y) at matched dim d=492:
+
+| scheme | ΔACC vs Sep(ZXY) | p | verdict |
+|--------|------------------|------|---------|
+| CRyE   | +0.0123 | 0.039*  | helps |
+| CSE    | +0.0164 | 0.0003* | helps (best) |
+| PA-CSE | −0.0137 | 0.0075* | **HURTS** |
+| CP-2L  | +0.0052 | 0.32 NS | flat |
+| GBE    | collapses 2/5 seeds | — | unstable |
+
+CSE → PA-CSE (same base family, +entanglement, dimension fixed) flips a SIGNIFICANT help into
+a SIGNIFICANT hurt. This is the cleanest controlled dose-response in the portfolio. KEEP PA-CSE.
+Paper's own caveat (line 675): top-3 absolute rank is within seed noise; the paired t-tests +
+per-image rho mechanism are the load-bearing claims, not the ranking.
+
+ECG (paper_aeon): no entangler beats Sep on any head; GBE worst; PA-CSE ties Sep. Null as the
+zero-coupling anchor predicts.
+
+## Consolidated thesis (evidence-backed)
+Entanglement in a fixed encoding helps iff (a) the data has genuine multi-channel correlation
+AND (b) the entanglement is dosed to match it. Dose axis: matched < beneficial < excessive.
+No absolute advantage (encoding lossy vs ROCKET/ResNet); the contribution is the WHEN-it-helps
+mechanism (Huang 2021 / Kübler 2021 + a dose refinement). Arm 1's rigorous backbone
+(PathMNIST + ECG) ALREADY EXISTS → Arm 1 is mostly writing; experimental risk goes to Arm 2.
 
 ## ECG anchor (PhysioNet2017) — single channel
 - 1 lead → ZERO cross-channel structure by construction.
