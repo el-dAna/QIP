@@ -210,3 +210,4 @@ __marimo__/
 
 # Arm 2 derived feature cache (regenerable from run_arm2_scaffold.py)
 _arm2_features.npz
+_arm2_comparison.png
